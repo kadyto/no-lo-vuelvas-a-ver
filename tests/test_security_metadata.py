@@ -8,6 +8,7 @@ from app import auth, library
 from app.filmaffinity import (
     FilmAffinityAdapter,
     MetadataUnavailable,
+    canonical_url,
     parse_metadata,
     parse_url,
     robots_allowed,
@@ -24,6 +25,10 @@ HTML = """<main itemscope itemtype="https://schema.org/Movie"><h1 id="main-title
     [
         "https://evil.test/es/film1.html",
         "https://www.filmaffinity.com.evil.test/es/film1.html",
+        "https://m.filmaffinity.com.evil.test/es/film1.html",
+        "https://other.filmaffinity.com/es/film1.html",
+        "https://m.filmaffinity.com:443/es/film1.html",
+        "https://user:password@m.filmaffinity.com/es/film1.html",
         "https://u:p@filmaffinity.com/es/film1.html",
         "https://filmaffinity.com:443/es/film1.html",
         "https://127.0.0.1/es/film1.html",
@@ -37,6 +42,14 @@ HTML = """<main itemscope itemtype="https://schema.org/Movie"><h1 id="main-title
 def test_invalid_urls(url):
     with pytest.raises(ValueError):
         parse_url(url)
+
+
+@pytest.mark.parametrize("host", ["m.filmaffinity.com", "www.filmaffinity.com", "filmaffinity.com"])
+def test_mobile_url_canonical_identity(host):
+    assert parse_url(f"https://{host}/en/film000123.html?from=mobile#details") == "123"
+    assert canonical_url(parse_url(f"https://{host}/es/film123.html")) == (
+        "https://www.filmaffinity.com/es/film123.html"
+    )
 
 
 def test_parser_synthetic():
@@ -73,9 +86,77 @@ def test_simulated_http_refusals(status):
         )
 
     adapter = FilmAffinityAdapter(True, httpx.MockTransport(handler), resolver)
-    with pytest.raises(MetadataUnavailable):
+    with pytest.raises(MetadataUnavailable) as exc:
         adapter.fetch("123")
+    assert f"HTTP {status}" in str(exc.value) and "la ficha" in str(exc.value)
+    if status == 403:
+        assert "no permite confirmar si exige un captcha" in str(exc.value)
     assert len(calls) == 2 and not any("evil" in x for x in calls)
+
+
+@pytest.mark.parametrize(
+    "resource,status,body,expected",
+    [
+        ("/robots.txt", 403, "Forbidden", "no permite confirmar si exige un captcha"),
+        ("/robots.txt", 429, "Slow down", "limita las consultas"),
+        ("/robots.txt", 200, '<html><div class="h-captcha"></div></html>', "comprobación humana"),
+        ("/robots.txt", 200, "<html>Acceso denegado</html>", "HTML en lugar de reglas"),
+        ("/es/film123.html", 403, '<div class="g-recaptcha"></div>', "comprobación humana"),
+        ("/es/film123.html", 200, '<form id="challenge-form">Just a moment</form>', "comprobación humana"),
+    ],
+)
+def test_diagnostic_distinguishes_resource_and_human_check(resource, status, body, expected):
+    calls = []
+
+    def handler(request):
+        calls.append(str(request.url))
+        if request.url.path == resource:
+            return httpx.Response(status, text=body)
+        return httpx.Response(200, text="User-agent: *\nAllow: /")
+
+    adapter = FilmAffinityAdapter(True, httpx.MockTransport(handler), resolver)
+    with pytest.raises(MetadataUnavailable) as exc:
+        adapter.fetch("123")
+    message = str(exc.value)
+    assert f"HTTP {status}" in message and expected in message
+    assert ("robots.txt" if resource == "/robots.txt" else "la ficha") in message
+    assert "Completa los datos a mano" in message
+    assert len(calls) == (1 if resource == "/robots.txt" else 2)
+    assert all(url.startswith("https://www.filmaffinity.com/") for url in calls)
+    assert body not in message
+
+
+def test_403_diagnostic_reads_bounded_prefix():
+    class LargeDeniedResponse(httpx.SyncByteStream):
+        consumed = 0
+
+        def __iter__(self):
+            for _ in range(100):
+                self.consumed += 8192
+                yield b"X" * 8192
+
+    stream = LargeDeniedResponse()
+
+    def handler(request):
+        return httpx.Response(403, stream=stream)
+
+    adapter = FilmAffinityAdapter(True, httpx.MockTransport(handler), resolver)
+    with pytest.raises(MetadataUnavailable, match="HTTP 403 al consultar robots.txt"):
+        adapter.fetch("123")
+    assert stream.consumed == 32_768
+
+
+def test_robots_captcha_path_is_a_rule_not_a_challenge():
+    def handler(request):
+        return httpx.Response(
+            200,
+            text="User-agent: *\nDisallow: /captcha\nAllow: /es/"
+            if request.url.path == "/robots.txt"
+            else HTML,
+        )
+
+    adapter = FilmAffinityAdapter(True, httpx.MockTransport(handler), resolver)
+    assert adapter.fetch("123")["title"] == "El faro de prueba"
 
 
 def test_adapter_limits_robots_offline_and_private():
@@ -90,7 +171,7 @@ def test_adapter_limits_robots_offline_and_private():
         )
 
     adapter = FilmAffinityAdapter(True, httpx.MockTransport(handler), resolver)
-    with pytest.raises(MetadataUnavailable):
+    with pytest.raises(MetadataUnavailable, match=r"robots.txt.*no permiten"):
         adapter.fetch("123")
     assert requests == ["/robots.txt"]
     with pytest.raises(MetadataUnavailable):

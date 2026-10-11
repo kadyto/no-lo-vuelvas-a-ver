@@ -41,6 +41,7 @@ def test_invalid_scores(score):
         "https://www.filmaffinity.com/es/film123.html",
         "http://filmaffinity.com/en/film123.html?x=1#top",
         "https://www.filmaffinity.com/uk/film000123.html",
+        "https://m.filmaffinity.com/es/film123.html?mobile=1#top",
     ],
 )
 def test_fa_language_identity(db, url):
@@ -88,6 +89,7 @@ def test_remakes_and_attach_url(db):
         "la lúz",
         "456",
         "https://filmaffinity.com/en/film456.html?q=1#x",
+        "https://m.filmaffinity.com/es/film456.html",
     ],
 )
 def test_search(db, query):
@@ -161,14 +163,16 @@ def test_manual_failure_duplicate_before_fetch(client, application):
     application.state.adapter = adapter
     token = csrf(client.get("/works/new"))
     response = client.post(
-        "/metadata", data={"csrf": token, "fa_url": "https://filmaffinity.com/en/film111.html"}
+        "/metadata", data={"csrf": token, "fa_url": "https://m.filmaffinity.com/en/film111.html"}
     )
     assert response.status_code == 422 and "Sin conexión" in response.text and "film111.html" in response.text
+    assert 'href="https://www.filmaffinity.com/es/film111.html"' in response.text
+    assert "Abrir ficha en FilmAffinity" in response.text
     response = client.post(
         "/works",
         data={
             "csrf": token,
-            "fa_url": "https://filmaffinity.com/en/film111.html",
+            "fa_url": "https://m.filmaffinity.com/en/film111.html",
             "title": "Manual",
             "kind": "movie",
         },

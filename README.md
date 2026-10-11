@@ -7,7 +7,7 @@ Una instalación, una biblioteca compartida y una cuenta de acceso. Interfaz en 
 ## Qué incluye V1
 
 - Películas y series vistas; ficha general para cada serie, sin temporadas ni episodios.
-- Alta por URL de FilmAffinity o manual; identidad única por ID y protección ante altas simultáneas.
+- Alta por URL de FilmAffinity (incluidos enlaces móviles `m.`) o manual; identidad única por ID y protección ante altas simultáneas.
 - Título principal, original y alias con idioma; año, categorías múltiples, fecha de visionado opcional.
 - Nota opcional de 1 a 10 en pasos de 0,5, anotaciones y marca Recomendable independiente.
 - Búsqueda por títulos, alias, ID y URL; ignora mayúsculas y tildes. Filtros combinables, orden y paginación del servidor.

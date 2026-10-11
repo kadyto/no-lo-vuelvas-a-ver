@@ -8,7 +8,7 @@ Antes de habilitar el adaptador, el administrador debe verificar las condiciones
 
 ## Identidad offline
 
-Solo se aceptan URLs `http` o `https` de los dominios exactos `www.filmaffinity.com` y `filmaffinity.com`, con ruta `/<idioma de dos letras>/film<ID numérico>.html`. Se rechazan credenciales, puertos explícitos, otros destinos, controles y rutas extra. Parámetros, fragmentos e idioma no alteran el ID. Se conserva una URL canónica `https://www.filmaffinity.com/es/film<ID>.html` y una restricción UNIQUE en SQLite. Distintos IDs pueden tener el mismo título.
+Solo se aceptan URLs `http` o `https` de los dominios exactos `www.filmaffinity.com`, `m.filmaffinity.com` y `filmaffinity.com`, con ruta `/<idioma de dos letras>/film<ID numérico>.html`. Se rechazan credenciales, puertos explícitos, otros destinos, controles y rutas extra. Parámetros, fragmentos, subdominio móvil e idioma no alteran el ID. Se conserva una URL canónica `https://www.filmaffinity.com/es/film<ID>.html` y una restricción UNIQUE en SQLite. Distintos IDs pueden tener el mismo título. Aceptar `m.` no cambia el destino de consulta: siempre se construye la URL española de `www` a partir del ID.
 
 Se busca una ficha existente antes de llamar al proveedor y antes de guardar. Un conflicto muestra «Ya está en tu biblioteca», nota, Recomendable y enlace a la ficha. La base evita también duplicados simultáneos. El formulario manual puede usar URL sin autocompletado, o excepcionalmente omitirla; entonces avisa de posibles coincidencias por títulos/alias, año y tipo, que el usuario decide.
 
@@ -21,5 +21,13 @@ Se comprueba robots con una caché de 24 horas; si no se puede obtener o impide 
 El parser intenta leer título español, título original, año, tipo y hasta doce géneros explícitos. Si no identifica el tipo, el usuario lo completa. No traduce títulos, no añade alias inventados y no promete obtener todas las versiones idiomáticas. V1 no extrae alias cuando no hay una fuente inequívoca. Los géneros son sugerencias; solo se asignan categorías elegidas por el usuario. La vista previa debe confirmarse para guardar. Se conserva proveedor, fecha de obtención y una instantánea mínima de metadatos; los campos editados pueden diferir de ella.
 
 No se copian sinopsis, carteles, críticas, reseñas ajenas ni puntuaciones del proveedor. No hay rastreo del catálogo, enlaces relacionados, búsqueda externa por pulsación ni sincronización de fondo. No se evaden captcha ni bloqueos 403/429. La biblioteca sigue funcionando sin Internet.
+
+## Diagnóstico de un bloqueo y captcha
+
+El aviso muestra el código HTTP y si la respuesta corresponde a `robots.txt` o a la ficha. Un **403** significa acceso rechazado; por sí solo no demuestra que exista un captcha. Se inspecciona como máximo un prefijo de 32 KiB de una respuesta 403 para detectar señales explícitas de comprobación humana, sin mostrar ni guardar el HTML recibido. Un **429** indica límite de consultas. Las redirecciones se indican y no se siguen. Si `robots.txt` impide el acceso o devuelve una página HTML de bloqueo, no se consulta la ficha.
+
+Cuando hay un fallo, el formulario conserva la URL canónica, su identidad y tus campos, y ofrece **Abrir ficha en FilmAffinity**. Puedes consultar los datos en esa pestaña y completarlos a mano.
+
+Una comprobación humana puede estar asociada a cookies, a la sesión del navegador o a la IP de salida. Resolverla al abrir FilmAffinity en tu navegador no garantiza que autorice también la petición del contenedor: son sesiones diferentes. Esta V1 no incrusta el captcha ni transfiere cookies o tokens del navegador al servidor. No se modifica la identidad ni se guarda automáticamente una obra por fallar el autocompletado.
 
 El adaptador está en `app/filmaffinity.py`, separado de `app/library.py`. Las pruebas usan muestras mínimas sintéticas y `httpx.MockTransport`; las pruebas normales no acceden a FilmAffinity. Los metadatos de terceros mantienen sus derechos y no se presentan como contenidos licenciados bajo MIT.

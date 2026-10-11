@@ -128,10 +128,14 @@ def main():
                     mp.screenshot(path=str(artifacts / "biblioteca-movil.png"), full_page=True)
                     assert mp.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
                     mp.get_by_role("link", name="Añadir obra", exact=False).click()
-                    mp.locator("#fa-url").fill("https://www.filmaffinity.com/en/film123456.html?synthetic=1")
+                    mp.locator("#fa-url").fill("https://m.filmaffinity.com/en/film123456.html?synthetic=1")
                     mp.get_by_role("button", name="Comprobar y obtener metadatos").click()
                     assert mp.get_by_role("alert").is_visible()
                     assert "film123456.html" in mp.locator("#fa-url").input_value()
+                    assert mp.get_by_role("link", name="Abrir ficha en FilmAffinity").get_attribute(
+                        "href"
+                    ) == ("https://www.filmaffinity.com/es/film123456.html")
+                    mp.screenshot(path=str(artifacts / "alta-movil-manual.png"), full_page=True)
                     mp.locator("#title").fill("La ficha móvil de prueba")
                     mp.locator("#kind").select_option("movie")
                     assert mp.evaluate("document.documentElement.scrollWidth <= window.innerWidth")

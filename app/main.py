@@ -263,10 +263,12 @@ def create_app(settings=None, adapter=None):
         data = await form(request)
         values = form_values(data)
         return_to = safe_return(data.get("return_to"))
+        reference_url = None
         with app.state.db() as db:
             try:
                 fa_id = parse_url(str(data.get("fa_url", "")))
                 values["fa_url"] = canonical_url(fa_id)
+                reference_url = values["fa_url"]
                 existing = library.by_fa(db, fa_id)
                 if existing:
                     return render(request, "duplicate.html", status=409, work=existing, return_to=return_to)
@@ -309,6 +311,7 @@ def create_app(settings=None, adapter=None):
                     work=None,
                     return_to=return_to,
                     error=str(exc),
+                    metadata_url=reference_url if isinstance(exc, MetadataUnavailable) else None,
                     status=422,
                 )
 
