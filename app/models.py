@@ -11,7 +11,8 @@ class Base(DeclarativeBase):
 
 
 work_categories = Table(
-    "work_categories", Base.metadata,
+    "work_categories",
+    Base.metadata,
     Column("work_id", ForeignKey("works.id", ondelete="CASCADE"), primary_key=True),
     Column("category_id", ForeignKey("categories.id", ondelete="CASCADE"), primary_key=True),
 )

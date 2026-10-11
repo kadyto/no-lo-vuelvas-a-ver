@@ -1,5 +1,6 @@
 import hmac
 import json
+import os
 import secrets
 import time
 from contextlib import asynccontextmanager
@@ -38,6 +39,7 @@ def create_app(settings=None, adapter=None):
 
     @asynccontextmanager
     async def lifespan(app):
+        os.umask(0o077)
         settings.data_dir.mkdir(parents=True, exist_ok=True)
         migrate(settings.db_path)
         app.state.engine = make_engine(settings.db_path)
@@ -49,53 +51,84 @@ def create_app(settings=None, adapter=None):
         yield
         app.state.engine.dispose()
 
-    app = FastAPI(title="No lo vuelvas a ver", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
+    app = FastAPI(
+        title="No lo vuelvas a ver", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan
+    )
     app.state.adapter = adapter or FilmAffinityAdapter(settings.filmaffinity_enabled)
     app.mount("/static", StaticFiles(directory=ROOT / "static"), name="static")
 
     def render(request, template, status=200, **context):
-        return templates.TemplateResponse(request=request, name=template, context={
-            "csrf": request.state.session.csrf if getattr(request.state, "session", None) else "",
-            "authenticated": bool(getattr(request.state, "session", None) and request.state.session.authenticated),
-            **context}, status_code=status)
+        return templates.TemplateResponse(
+            request=request,
+            name=template,
+            context={
+                "csrf": request.state.session.csrf if getattr(request.state, "session", None) else "",
+                "authenticated": bool(
+                    getattr(request.state, "session", None) and request.state.session.authenticated
+                ),
+                **context,
+            },
+            status_code=status,
+        )
 
     def redirect(path):
         return RedirectResponse(path, status_code=303)
 
     def set_cookie(response, token):
-        response.set_cookie("nlvav_session", token, max_age=settings.session_hours * 3600,
-                            httponly=True, samesite="lax", secure=settings.secure_cookies, path="/")
+        response.set_cookie(
+            "nlvav_session",
+            token,
+            max_age=settings.session_hours * 3600,
+            httponly=True,
+            samesite="lax",
+            secure=settings.secure_cookies,
+            path="/",
+        )
 
     @app.middleware("http")
     async def access(request, call_next):
         request.state.session = None
         if not request.url.path.startswith("/static/") and request.url.path != "/healthz":
-            if request.headers.get("content-length", "0").isdigit() and int(request.headers.get("content-length", "0")) > transfers.MAX_IMPORT_BYTES + 500_000:
+            if (
+                request.headers.get("content-length", "0").isdigit()
+                and int(request.headers.get("content-length", "0")) > transfers.MAX_IMPORT_BYTES + 500_000
+            ):
                 return Response("Petición demasiado grande", status_code=413)
             with app.state.db() as db:
                 token = request.cookies.get("nlvav_session", "")
                 session = db.get(BrowserSession, auth.token_hash(token)) if len(token) <= 100 else None
                 if session and session.expires_at > int(time.time()):
                     request.state.session = session
-            if request.url.path != "/login" and not (request.state.session and request.state.session.authenticated):
+            if request.url.path != "/login" and not (
+                request.state.session and request.state.session.authenticated
+            ):
                 return redirect("/login")
         response = await call_next(request)
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["Referrer-Policy"] = "no-referrer"
-        response.headers["Content-Security-Policy"] = "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; frame-ancestors 'none'; form-action 'self'; base-uri 'none'"
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; frame-ancestors 'none'; form-action 'self'; base-uri 'none'"
+        )
         if not request.url.path.startswith("/static/"):
             response.headers["Cache-Control"] = "no-store"
         return response
 
     async def form(request):
-        body = await request.body()
-        if len(body) > transfers.MAX_IMPORT_BYTES + 500_000:
-            raise HTTPException(413, "Petición demasiado grande")
+        # Bound streamed/chunked bodies before parsing, even when Content-Length is absent or incorrect.
+        chunks, size = [], 0
+        async for chunk in request.stream():
+            size += len(chunk)
+            if size > transfers.MAX_IMPORT_BYTES + 500_000:
+                raise HTTPException(413, "Petición demasiado grande")
+            chunks.append(chunk)
+        request._body = b"".join(chunks)
         data = await request.form(max_files=1, max_fields=200)
         session = request.state.session
         if not session or not hmac.compare_digest(str(data.get("csrf", "")), session.csrf):
-            raise HTTPException(403, "La sesión del formulario ha caducado. Recarga la página y vuelve a intentarlo.")
+            raise HTTPException(
+                403, "La sesión del formulario ha caducado. Recarga la página y vuelve a intentarlo."
+            )
         return data
 
     def form_values(data):
@@ -139,12 +172,18 @@ def create_app(settings=None, adapter=None):
         data = await form(request)
         with app.state.db() as db:
             if not auth.consume_limit(db, "login-global", 10, 300):
-                return render(request, "login.html", status=429, error="Demasiados intentos. Espera cinco minutos.")
+                return render(
+                    request, "login.html", status=429, error="Demasiados intentos. Espera cinco minutos."
+                )
             admin = db.get(Admin, 1)
-            correct = await run_in_threadpool(auth.verify_password, str(data.get("password", "")), admin.password_hash)
+            correct = await run_in_threadpool(
+                auth.verify_password, str(data.get("password", "")), admin.password_hash
+            )
             if str(data.get("username", "")) != admin.username or not correct:
                 return render(request, "login.html", status=401, error="Usuario o contraseña incorrectos.")
-            db.execute(delete(BrowserSession).where(BrowserSession.token_hash == request.state.session.token_hash))
+            db.execute(
+                delete(BrowserSession).where(BrowserSession.token_hash == request.state.session.token_hash)
+            )
             token, _ = auth.new_session(db, settings.session_hours, authenticated=True)
         response = redirect("/")
         set_cookie(response, token)
@@ -154,7 +193,9 @@ def create_app(settings=None, adapter=None):
     async def logout(request: Request):
         await form(request)
         with app.state.db() as db:
-            db.execute(delete(BrowserSession).where(BrowserSession.token_hash == request.state.session.token_hash))
+            db.execute(
+                delete(BrowserSession).where(BrowserSession.token_hash == request.state.session.token_hash)
+            )
             db.commit()
         response = redirect("/login")
         response.delete_cookie("nlvav_session", path="/")
@@ -165,21 +206,41 @@ def create_app(settings=None, adapter=None):
         params = request.query_params
         with app.state.db() as db:
             try:
-                result = library.search(db, q=params.get("q", ""), kind=params.get("kind", ""),
-                    category_ids=[int(x) for x in params.getlist("category")], recommended=params.get("recommended") == "1",
-                    minimum=params.get("minimum"), maximum=params.get("maximum"), unrated=params.get("unrated") == "1",
-                    sort=params.get("sort", "title"), page=int(params.get("page", "1")))
+                result = library.search(
+                    db,
+                    q=params.get("q", ""),
+                    kind=params.get("kind", ""),
+                    category_ids=[int(x) for x in params.getlist("category")],
+                    recommended=params.get("recommended") == "1",
+                    minimum=params.get("minimum"),
+                    maximum=params.get("maximum"),
+                    unrated=params.get("unrated") == "1",
+                    sort=params.get("sort", "title"),
+                    page=int(params.get("page", "1")),
+                )
                 error = None
             except ValueError as exc:
                 result, error = library.search(db), str(exc)
+
             def page_url(page):
                 values = [(k, v) for k, v in params.multi_items() if k != "page"] + [("page", str(page))]
                 return "/?" + urlencode(values)
+
             def kind_url(kind):
                 values = [(k, v) for k, v in params.multi_items() if k not in {"kind", "page"}]
                 return "/?" + urlencode(values + ([("kind", kind)] if kind else []))
-            return render(request, "library.html", **result, categories=cats(db), params=params, page_url=page_url,
-                kind_url=kind_url, return_to="/?" + str(params), error=error)
+
+            return render(
+                request,
+                "library.html",
+                **result,
+                categories=cats(db),
+                params=params,
+                page_url=page_url,
+                kind_url=kind_url,
+                return_to="/?" + str(params),
+                error=error,
+            )
 
     @app.get("/works/new")
     def new(request: Request):
@@ -188,8 +249,14 @@ def create_app(settings=None, adapter=None):
             values = {"title": query, "kind": "", "fa_url": ""}
             if query.startswith(("https://", "http://")):
                 values.update(title="", fa_url=query)
-            return render(request, "form.html", values=values, categories=cats(db), work=None,
-                return_to=safe_return(request.query_params.get("return_to")))
+            return render(
+                request,
+                "form.html",
+                values=values,
+                categories=cats(db),
+                work=None,
+                return_to=safe_return(request.query_params.get("return_to")),
+            )
 
     @app.post("/metadata")
     async def metadata(request: Request):
@@ -207,8 +274,12 @@ def create_app(settings=None, adapter=None):
                 if cached and cached.expires_at > time.time():
                     payload = json.loads(cached.payload)
                 else:
-                    if not auth.consume_limit(db, "metadata-interval", 1, 15) or not auth.consume_limit(db, "metadata-hour", 30, 3600):
-                        raise MetadataUnavailable("Espera antes de consultar otra ficha. Puedes seguir con el formulario manual.")
+                    if not auth.consume_limit(db, "metadata-interval", 1, 15) or not auth.consume_limit(
+                        db, "metadata-hour", 30, 3600
+                    ):
+                        raise MetadataUnavailable(
+                            "Espera antes de consultar otra ficha. Puedes seguir con el formulario manual."
+                        )
                     payload = await run_in_threadpool(app.state.adapter.fetch, fa_id)
                     cached = db.get(MetadataCache, fa_id) or MetadataCache(fa_id=fa_id)
                     cached.payload, cached.fetched_at = json.dumps(payload, ensure_ascii=False), now()
@@ -218,12 +289,28 @@ def create_app(settings=None, adapter=None):
                 for field in ("title", "original_title", "year", "kind"):
                     if payload.get(field) is not None:
                         values[field] = payload[field]
-                return render(request, "form.html", values=values, categories=cats(db), work=None, return_to=return_to,
-                    metadata=payload, obtained_at=cached.fetched_at,
-                    notice="Vista previa: revisa los datos obtenidos y completa los que faltan. Todavía no se ha guardado ninguna ficha.")
+                return render(
+                    request,
+                    "form.html",
+                    values=values,
+                    categories=cats(db),
+                    work=None,
+                    return_to=return_to,
+                    metadata=payload,
+                    obtained_at=cached.fetched_at,
+                    notice="Vista previa: revisa los datos obtenidos y completa los que faltan. Todavía no se ha guardado ninguna ficha.",
+                )
             except (ValueError, MetadataUnavailable) as exc:
-                return render(request, "form.html", values=values, categories=cats(db), work=None,
-                    return_to=return_to, error=str(exc), status=422)
+                return render(
+                    request,
+                    "form.html",
+                    values=values,
+                    categories=cats(db),
+                    work=None,
+                    return_to=return_to,
+                    error=str(exc),
+                    status=422,
+                )
 
     @app.post("/works")
     async def create(request: Request):
@@ -244,13 +331,22 @@ def create_app(settings=None, adapter=None):
                 if not work and not validated.fa_id and data.get("allow_similar") != "on":
                     matches = library.possible_matches(db, validated)
                     if matches:
-                        return render(request, "form.html", status=409, values=form_values(data), categories=categories,
-                            work=None, similar=matches, return_to=return_to,
-                            error="Hay posibles coincidencias. Revisa sus fichas y confirma si quieres crear otra obra.")
+                        return render(
+                            request,
+                            "form.html",
+                            status=409,
+                            values=form_values(data),
+                            categories=categories,
+                            work=None,
+                            similar=matches,
+                            return_to=return_to,
+                            error="Hay posibles coincidencias. Revisa sus fichas y confirma si quieres crear otra obra.",
+                        )
                 if not work and data.get("metadata_confirm") == "on" and validated.fa_id:
                     cached = db.get(MetadataCache, validated.fa_id)
                     if cached:
                         from datetime import datetime
+
                         validated.metadata_source = "FilmAffinity"
                         validated.metadata_fetched_at = datetime.fromisoformat(cached.fetched_at)
                         validated.metadata_snapshot = json.loads(cached.payload)
@@ -259,24 +355,44 @@ def create_app(settings=None, adapter=None):
             except library.DuplicateWork as exc:
                 return render(request, "duplicate.html", status=409, work=exc.existing, return_to=return_to)
             except (ValueError, ValidationError) as exc:
-                return render(request, "form.html", status=422, values=form_values(data), categories=categories,
-                    work=work, return_to=return_to, error=error_message(exc))
+                return render(
+                    request,
+                    "form.html",
+                    status=422,
+                    values=form_values(data),
+                    categories=categories,
+                    work=work,
+                    return_to=return_to,
+                    error=error_message(exc),
+                )
 
     @app.get("/works/{work_id}")
     def detail(request: Request, work_id: int):
         with app.state.db() as db:
-            return render(request, "detail.html", work=get_work(db, work_id),
-                          return_to=safe_return(request.query_params.get("return_to")))
+            return render(
+                request,
+                "detail.html",
+                work=get_work(db, work_id),
+                return_to=safe_return(request.query_params.get("return_to")),
+            )
 
     @app.get("/works/{work_id}/edit")
     def edit_page(request: Request, work_id: int):
         with app.state.db() as db:
             work = get_work(db, work_id)
             values = library.work_data(work)
-            values["aliases"] = "\n".join(a.title + (" | " + a.language if a.language else "") for a in work.aliases)
+            values["aliases"] = "\n".join(
+                a.title + (" | " + a.language if a.language else "") for a in work.aliases
+            )
             values["category_ids"] = [str(c.id) for c in work.categories]
-            return render(request, "form.html", work=work, values=values, categories=cats(db),
-                          return_to=safe_return(request.query_params.get("return_to")))
+            return render(
+                request,
+                "form.html",
+                work=work,
+                values=values,
+                categories=cats(db),
+                return_to=safe_return(request.query_params.get("return_to")),
+            )
 
     @app.post("/works/{work_id}/recommend")
     async def recommend(request: Request, work_id: int):
@@ -291,7 +407,12 @@ def create_app(settings=None, adapter=None):
     @app.get("/works/{work_id}/delete")
     def delete_page(request: Request, work_id: int):
         with app.state.db() as db:
-            return render(request, "delete.html", work=get_work(db, work_id), return_to=safe_return(request.query_params.get("return_to")))
+            return render(
+                request,
+                "delete.html",
+                work=get_work(db, work_id),
+                return_to=safe_return(request.query_params.get("return_to")),
+            )
 
     @app.post("/works/{work_id}/delete")
     async def delete_work(request: Request, work_id: int):
@@ -306,7 +427,11 @@ def create_app(settings=None, adapter=None):
     @app.get("/categories")
     def categories_page(request: Request):
         with app.state.db() as db:
-            return render(request, "categories.html", categories=[(c, library.category_count(db, c.id)) for c in cats(db)])
+            return render(
+                request,
+                "categories.html",
+                categories=[(c, library.category_count(db, c.id)) for c in cats(db)],
+            )
 
     @app.post("/categories")
     async def categories_change(request: Request):
@@ -319,7 +444,12 @@ def create_app(settings=None, adapter=None):
                     raise ValueError("La categoría ya no existe.")
                 if data.get("action") == "delete":
                     if data.get("confirm") != "yes":
-                        return render(request, "category_delete.html", category=item, count=library.category_count(db, item.id))
+                        return render(
+                            request,
+                            "category_delete.html",
+                            category=item,
+                            count=library.category_count(db, item.id),
+                        )
                     db.delete(item)
                 else:
                     name = " ".join(str(data.get("name", "")).split())
@@ -334,8 +464,13 @@ def create_app(settings=None, adapter=None):
                 return redirect("/categories")
             except (ValueError, IntegrityError) as exc:
                 db.rollback()
-                return render(request, "categories.html", status=422, error=str(exc) if isinstance(exc, ValueError) else "La categoría ya existe.",
-                    categories=[(c, library.category_count(db, c.id)) for c in cats(db)])
+                return render(
+                    request,
+                    "categories.html",
+                    status=422,
+                    error=str(exc) if isinstance(exc, ValueError) else "La categoría ya existe.",
+                    categories=[(c, library.category_count(db, c.id)) for c in cats(db)],
+                )
 
     @app.get("/settings")
     def settings_page(request: Request):
@@ -349,7 +484,9 @@ def create_app(settings=None, adapter=None):
                 if not auth.consume_limit(db, "password-global", 10, 300):
                     raise ValueError("Demasiados intentos. Espera cinco minutos.")
                 admin = db.get(Admin, 1)
-                if not await run_in_threadpool(auth.verify_password, str(data.get("current", "")), admin.password_hash):
+                if not await run_in_threadpool(
+                    auth.verify_password, str(data.get("current", "")), admin.password_hash
+                ):
                     raise ValueError("La contraseña actual no es correcta.")
                 if data.get("new") != data.get("repeat"):
                     raise ValueError("Las contraseñas nuevas no coinciden.")
@@ -360,7 +497,13 @@ def create_app(settings=None, adapter=None):
                 response.delete_cookie("nlvav_session", path="/")
                 return response
             except ValueError as exc:
-                return render(request, "settings.html", status=422, fa_enabled=settings.filmaffinity_enabled, error=str(exc))
+                return render(
+                    request,
+                    "settings.html",
+                    status=422,
+                    fa_enabled=settings.filmaffinity_enabled,
+                    error=str(exc),
+                )
 
     @app.get("/export/{format}")
     def export(request: Request, format: str):
@@ -371,7 +514,11 @@ def create_app(settings=None, adapter=None):
                 content, media = transfers.export_csv(db), "text/csv; charset=utf-8"
             else:
                 raise HTTPException(404)
-        return Response(content, media_type=media, headers={"Content-Disposition": f'attachment; filename="no-lo-vuelvas-a-ver.{format}"'})
+        return Response(
+            content,
+            media_type=media,
+            headers={"Content-Disposition": f'attachment; filename="no-lo-vuelvas-a-ver.{format}"'},
+        )
 
     @app.post("/import/preview")
     async def import_preview(request: Request):
@@ -384,28 +531,64 @@ def create_app(settings=None, adapter=None):
                 payload = transfers.read_import(await upload.read(transfers.MAX_IMPORT_BYTES + 1))
                 rows = transfers.preview_import(db, payload)
                 token = secrets.token_urlsafe(32)
-                db.add(ImportPreview(token=token, session_hash=request.state.session.token_hash,
-                    payload=payload.model_dump_json(), expires_at=int(time.time()) + 900))
+                db.add(
+                    ImportPreview(
+                        token=token,
+                        session_hash=request.state.session.token_hash,
+                        payload=payload.model_dump_json(),
+                        expires_at=int(time.time()) + 900,
+                    )
+                )
                 db.commit()
-                return render(request, "import.html", token=token, rows=rows[:100], total=len(rows),
-                    conflicts=sum(bool(x) for _, x in rows), category_names=payload.categories)
+                return render(
+                    request,
+                    "import.html",
+                    token=token,
+                    rows=rows[:100],
+                    total=len(rows),
+                    conflicts=sum(bool(x) for _, x in rows),
+                    category_names=payload.categories,
+                )
             except ValueError as exc:
-                return render(request, "settings.html", status=422, fa_enabled=settings.filmaffinity_enabled, error=str(exc))
+                return render(
+                    request,
+                    "settings.html",
+                    status=422,
+                    fa_enabled=settings.filmaffinity_enabled,
+                    error=str(exc),
+                )
 
     @app.post("/import/confirm")
     async def import_confirm(request: Request):
         data = await form(request)
         with app.state.db() as db:
             item = db.get(ImportPreview, str(data.get("token", "")))
-            if not item or item.session_hash != request.state.session.token_hash or item.expires_at < time.time():
+            if (
+                not item
+                or item.session_hash != request.state.session.token_hash
+                or item.expires_at < time.time()
+            ):
                 raise HTTPException(422, "La vista previa ha caducado. Vuelve a cargar el archivo.")
             try:
-                imported, skipped = transfers.import_library(db, transfers.read_import(item.payload.encode()), str(data.get("mode", "skip")))
+                imported, skipped = transfers.import_library(
+                    db, transfers.read_import(item.payload.encode()), str(data.get("mode", "skip"))
+                )
                 db.delete(item)
                 db.commit()
-                return render(request, "settings.html", notice=f"Importación completada: {imported} nuevas, {skipped} omitidas.", fa_enabled=settings.filmaffinity_enabled)
+                return render(
+                    request,
+                    "settings.html",
+                    notice=f"Importación completada: {imported} nuevas, {skipped} omitidas.",
+                    fa_enabled=settings.filmaffinity_enabled,
+                )
             except ValueError as exc:
-                return render(request, "settings.html", status=409, error=str(exc), fa_enabled=settings.filmaffinity_enabled)
+                return render(
+                    request,
+                    "settings.html",
+                    status=409,
+                    error=str(exc),
+                    fa_enabled=settings.filmaffinity_enabled,
+                )
 
     return app
 

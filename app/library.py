@@ -10,12 +10,25 @@ from app.filmaffinity import parse_url
 from app.models import Alias, Category, Review, Work, work_categories
 from app.schemas import WorkData
 
-DEFAULT_CATEGORIES = ["Thriller", "Comedia", "Drama", "Acción", "Ciencia ficción", "Terror", "Animación", "Documental"]
+DEFAULT_CATEGORIES = [
+    "Thriller",
+    "Comedia",
+    "Drama",
+    "Acción",
+    "Ciencia ficción",
+    "Terror",
+    "Animación",
+    "Documental",
+]
 PAGE_SIZE = 24
 
 
 def normalize(text):
-    return " ".join("".join(c for c in unicodedata.normalize("NFKD", text or "") if not unicodedata.combining(c)).casefold().split())
+    return " ".join(
+        "".join(c for c in unicodedata.normalize("NFKD", text or "") if not unicodedata.combining(c))
+        .casefold()
+        .split()
+    )
 
 
 class DuplicateWork(ValueError):
@@ -42,7 +55,9 @@ def category(db, name, create=True):
 
 
 def category_count(db, category_id):
-    return db.scalar(select(func.count()).select_from(work_categories).where(work_categories.c.category_id == category_id))
+    return db.scalar(
+        select(func.count()).select_from(work_categories).where(work_categories.c.category_id == category_id)
+    )
 
 
 def save_work(db, data: WorkData, work=None, commit=True):
@@ -77,8 +92,12 @@ def _save_work(db, data: WorkData, work=None, commit=True):
     if data.metadata_source:
         work.metadata_source = data.metadata_source
         work.metadata_fetched_at = data.metadata_fetched_at.isoformat() if data.metadata_fetched_at else None
-        work.metadata_snapshot = json.dumps(data.metadata_snapshot, ensure_ascii=False) if data.metadata_snapshot else None
-    work.aliases = [Alias(title=a.title, title_key=normalize(a.title), language=a.language) for a in data.aliases]
+        work.metadata_snapshot = (
+            json.dumps(data.metadata_snapshot, ensure_ascii=False) if data.metadata_snapshot else None
+        )
+    work.aliases = [
+        Alias(title=a.title, title_key=normalize(a.title), language=a.language) for a in data.aliases
+    ]
     work.categories = selected_categories
     review = work.review
     review.score_half = int(data.score * 2) if data.score is not None else None
@@ -112,28 +131,59 @@ def update_metadata(db, work, fields):
 
 
 def work_data(work):
-    return {"uid": work.uid, "title": work.title, "original_title": work.original_title, "kind": work.kind,
-            "year": work.year, "fa_id": work.fa_id, "fa_url": work.fa_url,
-            "aliases": [{"title": a.title, "language": a.language} for a in work.aliases],
-            "categories": [c.name for c in work.categories], "score": work.review.score,
-            "notes": work.review.notes, "recommended": work.review.recommended,
-            "watched_on": work.review.watched_on, "created_at": work.created_at, "updated_at": work.updated_at,
-            "metadata_source": work.metadata_source, "metadata_fetched_at": work.metadata_fetched_at,
-            "metadata_snapshot": json.loads(work.metadata_snapshot) if work.metadata_snapshot else None}
+    return {
+        "uid": work.uid,
+        "title": work.title,
+        "original_title": work.original_title,
+        "kind": work.kind,
+        "year": work.year,
+        "fa_id": work.fa_id,
+        "fa_url": work.fa_url,
+        "aliases": [{"title": a.title, "language": a.language} for a in work.aliases],
+        "categories": sorted([c.name for c in work.categories], key=normalize),
+        "score": work.review.score,
+        "notes": work.review.notes,
+        "recommended": work.review.recommended,
+        "watched_on": work.review.watched_on,
+        "created_at": work.created_at,
+        "updated_at": work.updated_at,
+        "metadata_source": work.metadata_source,
+        "metadata_fetched_at": work.metadata_fetched_at,
+        "metadata_snapshot": json.loads(work.metadata_snapshot) if work.metadata_snapshot else None,
+    }
 
 
 def possible_matches(db, data):
-    keys = {normalize(data.title), normalize(data.original_title)} | {normalize(a.title) for a in data.aliases}
+    keys = {normalize(data.title), normalize(data.original_title)} | {
+        normalize(a.title) for a in data.aliases
+    }
     keys.discard("")
-    stmt = select(Work).where(Work.kind == data.kind, or_(Work.title_key.in_(keys), Work.original_key.in_(keys),
-        exists(select(Alias.id).where(Alias.work_id == Work.id, Alias.title_key.in_(keys)))))
+    stmt = select(Work).where(
+        Work.kind == data.kind,
+        or_(
+            Work.title_key.in_(keys),
+            Work.original_key.in_(keys),
+            exists(select(Alias.id).where(Alias.work_id == Work.id, Alias.title_key.in_(keys))),
+        ),
+    )
     if data.year is not None:
         stmt = stmt.where(or_(Work.year == data.year, Work.year.is_(None)))
     return list(db.scalars(stmt.limit(20)).unique())
 
 
-def search(db, *, q="", kind="", category_ids=(), recommended=False, minimum=None, maximum=None,
-           unrated=False, sort="title", page=1):
+def search(
+    db,
+    *,
+    q="",
+    kind="",
+    category_ids=(),
+    recommended=False,
+    minimum=None,
+    maximum=None,
+    unrated=False,
+    sort="title",
+    page=1,
+):
     q = q.strip()[:500]
     stmt = select(Work).join(Review)
     key = normalize(q)
@@ -149,14 +199,27 @@ def search(db, *, q="", kind="", category_ids=(), recommended=False, minimum=Non
         stmt = stmt.where(Work.fa_id == external_id)
     elif key:
         for word in key.split():
-            stmt = stmt.where(or_(Work.title_key.contains(word, autoescape=True),
-                Work.original_key.contains(word, autoescape=True),
-                exists(select(Alias.id).where(Alias.work_id == Work.id, Alias.title_key.contains(word, autoescape=True)))))
+            stmt = stmt.where(
+                or_(
+                    Work.title_key.contains(word, autoescape=True),
+                    Work.original_key.contains(word, autoescape=True),
+                    exists(
+                        select(Alias.id).where(
+                            Alias.work_id == Work.id, Alias.title_key.contains(word, autoescape=True)
+                        )
+                    ),
+                )
+            )
     if kind in {"movie", "series"}:
         stmt = stmt.where(Work.kind == kind)
     if category_ids:
-        stmt = stmt.where(exists(select(work_categories.c.work_id).where(
-            work_categories.c.work_id == Work.id, work_categories.c.category_id.in_(category_ids))))
+        stmt = stmt.where(
+            exists(
+                select(work_categories.c.work_id).where(
+                    work_categories.c.work_id == Work.id, work_categories.c.category_id.in_(category_ids)
+                )
+            )
+        )
     if recommended:
         stmt = stmt.where(Review.recommended.is_(True))
     if unrated:
@@ -173,11 +236,22 @@ def search(db, *, q="", kind="", category_ids=(), recommended=False, minimum=Non
     count = db.scalar(select(func.count()).select_from(stmt.subquery()))
     pages = max(1, (count + PAGE_SIZE - 1) // PAGE_SIZE)
     page = min(max(1, page), pages)
-    order = {"title": Work.title_key, "score": Review.score_half.desc().nulls_last(),
-             "added": Work.created_at.desc(), "watched": Review.watched_on.desc().nulls_last()}.get(sort, Work.title_key)
-    exact = or_(Work.title_key == key, Work.original_key == key,
-        exists(select(Alias.id).where(Alias.work_id == Work.id, Alias.title_key == key)))
-    stmt = stmt.order_by(case((exact, 0), else_=1), order, Work.id).offset((page - 1) * PAGE_SIZE).limit(PAGE_SIZE)
+    order = {
+        "title": Work.title_key,
+        "score": Review.score_half.desc().nulls_last(),
+        "added": Work.created_at.desc(),
+        "watched": Review.watched_on.desc().nulls_last(),
+    }.get(sort, Work.title_key)
+    exact = or_(
+        Work.title_key == key,
+        Work.original_key == key,
+        exists(select(Alias.id).where(Alias.work_id == Work.id, Alias.title_key == key)),
+    )
+    stmt = (
+        stmt.order_by(case((exact, 0), else_=1), order, Work.id)
+        .offset((page - 1) * PAGE_SIZE)
+        .limit(PAGE_SIZE)
+    )
     works = list(db.scalars(stmt).unique())
     matches = {}
     for work in works:
@@ -198,8 +272,16 @@ def parse_form(form, categories):
     valid = {str(c.id): c.name for c in categories}
     if selected - valid.keys():
         raise ValueError("Hay categorías que ya no existen. Revisa la selección.")
-    return WorkData(title=form.get("title", ""), original_title=form.get("original_title") or None,
-        kind=form.get("kind", ""), year=form.get("year") or None, fa_url=form.get("fa_url") or None,
-        aliases=aliases, categories=[valid[x] for x in selected], score=form.get("score") or None,
-        notes=form.get("notes", ""), recommended=form.get("recommended") == "on",
-        watched_on=form.get("watched_on") or None)
+    return WorkData(
+        title=form.get("title", ""),
+        original_title=form.get("original_title") or None,
+        kind=form.get("kind", ""),
+        year=form.get("year") or None,
+        fa_url=form.get("fa_url") or None,
+        aliases=aliases,
+        categories=[valid[x] for x in selected],
+        score=form.get("score") or None,
+        notes=form.get("notes", ""),
+        recommended=form.get("recommended") == "on",
+        watched_on=form.get("watched_on") or None,
+    )

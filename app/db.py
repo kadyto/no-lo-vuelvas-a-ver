@@ -44,6 +44,7 @@ def migrate(path):
     config.set_main_option("sqlalchemy.url", f"sqlite:///{path}".replace("%", "%%"))
     # Backup every existing database before any pending upgrade, including legacy databases.
     from alembic.script import ScriptDirectory
+
     target = ScriptDirectory.from_config(config).get_current_head()
     current = None
     if path.exists():

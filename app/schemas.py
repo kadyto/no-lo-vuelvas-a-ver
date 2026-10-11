@@ -56,8 +56,12 @@ class WorkData(StrictModel):
     @field_validator("score")
     @classmethod
     def valid_score(cls, value):
-        if value is not None and (not value.is_finite() or not 1 <= value <= 10 or value * 2 != int(value * 2)):
-            raise ValueError("La nota debe estar entre 1 y 10, en pasos de 0,5; déjala vacía si es desconocida.")
+        if value is not None and (
+            not value.is_finite() or not 1 <= value <= 10 or value * 2 != int(value * 2)
+        ):
+            raise ValueError(
+                "La nota debe estar entre 1 y 10, en pasos de 0,5; déjala vacía si es desconocida."
+            )
         return value
 
     @field_validator("categories")

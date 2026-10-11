@@ -1,4 +1,5 @@
 """Índices de navegación, sin transformación ni pérdida de datos."""
+
 from alembic import op
 
 revision = "0002"
@@ -6,9 +7,12 @@ down_revision = "0001"
 branch_labels = None
 depends_on = None
 
-INDEXES = {"works": ["title_key", "original_key", "kind", "created_at"],
-           "reviews": ["score_half", "recommended", "watched_on"],
-           "aliases": ["work_id", "title_key"], "sessions": ["expires_at"]}
+INDEXES = {
+    "works": ["title_key", "original_key", "kind", "created_at"],
+    "reviews": ["score_half", "recommended", "watched_on"],
+    "aliases": ["work_id", "title_key"],
+    "sessions": ["expires_at"],
+}
 
 
 def upgrade():

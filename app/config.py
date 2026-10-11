@@ -12,6 +12,12 @@ class Settings:
     filmaffinity_enabled: bool = False
     session_hours: int = 12
 
+    def __post_init__(self):
+        if not self.data_dir.is_absolute():
+            raise ValueError("DATA_DIR debe ser una ruta absoluta.")
+        if not 1 <= self.session_hours <= 168:
+            raise ValueError("SESSION_HOURS debe estar entre 1 y 168.")
+
     @classmethod
     def from_env(cls):
         return cls(

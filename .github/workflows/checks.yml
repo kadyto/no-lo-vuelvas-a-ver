@@ -1,0 +1,54 @@
+name: Controles
+on:
+  pull_request:
+  push:
+    branches: [main, 'work/**']
+  workflow_call:
+permissions:
+  contents: read
+jobs:
+  verify:
+    name: Pruebas e imagen (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            arch: amd64
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: '0.12.23'
+      - run: uv sync --frozen
+      - run: uv run --frozen ruff check app migrations tests scripts
+      - run: uv run --frozen pytest -q
+      - name: Comprobar exportación reproducible de dependencias
+        run: |
+          uv export --frozen --no-dev --format requirements-txt --no-header --output-file /tmp/requirements-check.lock --quiet
+          cmp requirements.lock /tmp/requirements-check.lock
+      - name: Validar Compose y parámetros necesarios
+        run: uv run --frozen python scripts/check_compose.py
+      - name: Construir imagen de la arquitectura del runner
+        run: docker build -t no-lo-vuelvas-a-ver:test .
+      - name: Smoke de contenedor y persistencia
+        run: uv run --frozen python tests/smoke_image.py no-lo-vuelvas-a-ver:test
+      - name: Flujos de navegador con datos ficticios
+        if: matrix.arch == 'amd64'
+        run: |
+          uv run --frozen playwright install --with-deps chromium
+          uv run --frozen python tests/browser_smoke.py
+      - uses: actions/upload-artifact@v4
+        if: always() && matrix.arch == 'amd64'
+        with:
+          name: capturas-ficticias
+          path: test-results/
+          if-no-files-found: ignore

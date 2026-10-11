@@ -12,14 +12,20 @@ MAX_IMPORT_BYTES = 10 * 1024 * 1024
 
 
 def export_library(db):
-    return LibraryExport(format="no-lo-vuelvas-a-ver", version=1, exported_at=datetime.now(timezone.utc),
+    return LibraryExport(
+        format="no-lo-vuelvas-a-ver",
+        version=1,
+        exported_at=datetime.now(timezone.utc),
         categories=list(db.scalars(select(Category.name).order_by(Category.name_key))),
-        works=[work_data(x) for x in db.scalars(select(Work).order_by(Work.id)).unique()])
+        works=[work_data(x) for x in db.scalars(select(Work).order_by(Work.id)).unique()],
+    )
 
 
 def read_import(content):
     if len(content) > MAX_IMPORT_BYTES:
-        raise ValueError("El archivo supera el límite de 10 MiB. Divide la exportación o usa una restauración SQLite.")
+        raise ValueError(
+            "El archivo supera el límite de 10 MiB. Divide la exportación o usa una restauración SQLite."
+        )
     try:
         return LibraryExport.model_validate_json(content)
     except (ValueError, UnicodeError) as exc:
@@ -27,7 +33,9 @@ def read_import(content):
 
 
 def conflict(db, item):
-    return db.scalar(select(Work).where(or_(Work.uid == str(item.uid), Work.fa_id == item.fa_id if item.fa_id else False)))
+    return db.scalar(
+        select(Work).where(or_(Work.uid == str(item.uid), Work.fa_id == item.fa_id if item.fa_id else False))
+    )
 
 
 def preview_import(db, data):
@@ -72,13 +80,38 @@ def safe_csv(value):
 def export_csv(db):
     buffer = io.StringIO(newline="")
     writer = csv.writer(buffer)
-    writer.writerow(["Título", "Título original", "Tipo", "Año", "FilmAffinity", "Alias (JSON)",
-                     "Categorías (JSON)", "Nota", "Recomendable", "Fecha de visionado", "Anotaciones"])
+    writer.writerow(
+        [
+            "Título",
+            "Título original",
+            "Tipo",
+            "Año",
+            "FilmAffinity",
+            "Alias (JSON)",
+            "Categorías (JSON)",
+            "Nota",
+            "Recomendable",
+            "Fecha de visionado",
+            "Anotaciones",
+        ]
+    )
     import json
+
     for work in db.scalars(select(Work).order_by(Work.id)).unique():
-        values = [work.title, work.original_title, "Película" if work.kind == "movie" else "Serie", work.year,
-            work.fa_url, json.dumps([{"title": a.title, "language": a.language} for a in work.aliases], ensure_ascii=False),
-            json.dumps([c.name for c in work.categories], ensure_ascii=False), work.review.score,
-            "Sí" if work.review.recommended else "No", work.review.watched_on, work.review.notes]
+        values = [
+            work.title,
+            work.original_title,
+            "Película" if work.kind == "movie" else "Serie",
+            work.year,
+            work.fa_url,
+            json.dumps(
+                [{"title": a.title, "language": a.language} for a in work.aliases], ensure_ascii=False
+            ),
+            json.dumps([c.name for c in work.categories], ensure_ascii=False),
+            work.review.score,
+            "Sí" if work.review.recommended else "No",
+            work.review.watched_on,
+            work.review.notes,
+        ]
         writer.writerow([safe_csv(x) for x in values])
     return "\ufeff" + buffer.getvalue()

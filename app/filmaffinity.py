@@ -1,4 +1,5 @@
 """Adaptador opcional: solo metadatos mínimos, nunca catálogo ni contenidos editoriales."""
+
 import fnmatch
 import ipaddress
 import re
@@ -23,15 +24,22 @@ def parse_url(url: str) -> str:
         raise ValueError("Pega una URL válida de una ficha de FilmAffinity.")
     try:
         parts = urlsplit(url)
-        if (parts.scheme not in {"http", "https"} or parts.hostname not in HOSTS
-                or parts.username is not None or parts.password is not None or parts.port is not None):
+        if (
+            parts.scheme not in {"http", "https"}
+            or parts.hostname not in HOSTS
+            or parts.username is not None
+            or parts.password is not None
+            or parts.port is not None
+        ):
             raise ValueError()
         match = re.fullmatch(r"/[a-z]{2}/film([0-9]{1,16})\.html", parts.path)
         if not match or int(match[1]) == 0:
             raise ValueError()
         return str(int(match[1]))
     except ValueError:
-        raise ValueError("Solo se admiten fichas film<ID>.html de FilmAffinity, sin credenciales ni puertos.") from None
+        raise ValueError(
+            "Solo se admiten fichas film<ID>.html de FilmAffinity, sin credenciales ni puertos."
+        ) from None
 
 
 def canonical_url(fa_id):
@@ -42,11 +50,15 @@ def canonical_url(fa_id):
 
 def parse_metadata(html):
     soup = BeautifulSoup(html, "html.parser")
-    if soup.select(".g-recaptcha, #captcha") or re.search(r"captcha|just a moment|verify you are human", soup.get_text(), re.I):
+    if soup.select(".g-recaptcha, #captcha") or re.search(
+        r"captcha|just a moment|verify you are human", soup.get_text(), re.I
+    ):
         raise MetadataUnavailable("FilmAffinity pide una comprobación humana. Completa la ficha a mano.")
     title_el = soup.select_one("#main-title span, h1[itemprop='name']")
     if not title_el or not title_el.get_text(strip=True):
-        raise MetadataUnavailable("El HTML de FilmAffinity ha cambiado o no contiene una ficha. Completa los datos a mano.")
+        raise MetadataUnavailable(
+            "El HTML de FilmAffinity ha cambiado o no contiene una ficha. Completa los datos a mano."
+        )
     title = title_el.get_text(" ", strip=True)
     original, year, genres, kind = None, None, [], None
     for dt in soup.select("dt"):
@@ -61,7 +73,9 @@ def parse_metadata(html):
             match = re.match(r"(\d{4})", value)
             year = int(match[1]) if match else None
         elif label == "género":
-            genres = [a.get_text(strip=True) for a in dd.select("a") if "/moviegenre.php" in a.get("href", "")]
+            genres = [
+                a.get_text(strip=True) for a in dd.select("a") if "/moviegenre.php" in a.get("href", "")
+            ]
             if "Serie de TV" in value:
                 kind = "series"
     # An explicit schema.org type is accepted; absent evidence leaves type for the user.
@@ -69,8 +83,14 @@ def parse_metadata(html):
         kind = kind or "movie"
     if soup.select_one('[itemtype="https://schema.org/TVSeries"], [itemtype="http://schema.org/TVSeries"]'):
         kind = "series"
-    return {"title": title[:300], "original_title": (original or "")[:300] or None,
-            "year": year, "kind": kind, "genres": list(dict.fromkeys(genres))[:12], "aliases": []}
+    return {
+        "title": title[:300],
+        "original_title": (original or "")[:300] or None,
+        "year": year,
+        "kind": kind,
+        "genres": list(dict.fromkeys(genres))[:12],
+        "aliases": [],
+    }
 
 
 def robots_allowed(text, path):
@@ -109,8 +129,10 @@ class FilmAffinityAdapter:
     def _read(self, client, url, limit=MAX_BYTES):
         with client.stream("GET", url) as response:
             if response.status_code != 200:
-                message = {403: "FilmAffinity ha bloqueado el acceso", 429: "FilmAffinity limita las consultas"}.get(
-                    response.status_code, "FilmAffinity no permite obtener esta ficha")
+                message = {
+                    403: "FilmAffinity ha bloqueado el acceso",
+                    429: "FilmAffinity limita las consultas",
+                }.get(response.status_code, "FilmAffinity no permite obtener esta ficha")
                 raise MetadataUnavailable(message + ". Completa los datos a mano.")
             size, chunks = 0, []
             for chunk in response.iter_bytes():
@@ -123,18 +145,28 @@ class FilmAffinityAdapter:
     def fetch(self, fa_id):
         url = canonical_url(fa_id)
         if not self.enabled:
-            raise MetadataUnavailable("Autocompletado desactivado: no se ha verificado el permiso de acceso automatizado. La URL y el ID se conservan; completa los datos a mano.")
+            raise MetadataUnavailable(
+                "Autocompletado desactivado: no se ha verificado el permiso de acceso automatizado. La URL y el ID se conservan; completa los datos a mano."
+            )
         try:
             addresses = self.resolver("www.filmaffinity.com", 443, type=socket.SOCK_STREAM)
             if not addresses or any(not ipaddress.ip_address(x[4][0]).is_global for x in addresses):
                 raise MetadataUnavailable("El destino de FilmAffinity no resuelve a una dirección pública.")
-            with httpx.Client(timeout=httpx.Timeout(8, connect=4), follow_redirects=False,
-                              headers={"User-Agent": USER_AGENT}, transport=self.transport) as client:
+            with httpx.Client(
+                timeout=httpx.Timeout(8, connect=4),
+                follow_redirects=False,
+                headers={"User-Agent": USER_AGENT},
+                transport=self.transport,
+            ) as client:
                 if self._robots is None or self._robots[0] < time.time():
                     robots = self._read(client, "https://www.filmaffinity.com/robots.txt", 100_000)
                     self._robots = (time.time() + 86400, robots)
                 if not robots_allowed(self._robots[1], urlsplit(url).path):
-                    raise MetadataUnavailable("Las reglas de acceso de FilmAffinity no permiten consultar esta ficha. Completa los datos a mano.")
+                    raise MetadataUnavailable(
+                        "Las reglas de acceso de FilmAffinity no permiten consultar esta ficha. Completa los datos a mano."
+                    )
                 return parse_metadata(self._read(client, url))
         except (httpx.HTTPError, OSError):
-            raise MetadataUnavailable("No se ha podido conectar con FilmAffinity. Completa los datos a mano.") from None
+            raise MetadataUnavailable(
+                "No se ha podido conectar con FilmAffinity. Completa los datos a mano."
+            ) from None

@@ -19,7 +19,9 @@ def data(**kwargs):
 def test_crud_null_score_and_review(db):
     work = library.save_work(db, data())
     assert work.review.score is None and work.review.watched_on is None
-    work = library.save_work(db, data(score=Decimal("7.5"), notes="Primera línea\nSegunda", recommended=True), work)
+    work = library.save_work(
+        db, data(score=Decimal("7.5"), notes="Primera línea\nSegunda", recommended=True), work
+    )
     assert work.review.score == 7.5 and work.review.recommended
     db.delete(work)
     db.commit()
@@ -33,7 +35,14 @@ def test_invalid_scores(score):
         data(score=score)
 
 
-@pytest.mark.parametrize("url", ["https://www.filmaffinity.com/es/film123.html", "http://filmaffinity.com/en/film123.html?x=1#top", "https://www.filmaffinity.com/uk/film000123.html"])
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://www.filmaffinity.com/es/film123.html",
+        "http://filmaffinity.com/en/film123.html?x=1#top",
+        "https://www.filmaffinity.com/uk/film000123.html",
+    ],
+)
 def test_fa_language_identity(db, url):
     work = library.save_work(db, data(fa_url="https://www.filmaffinity.com/es/film123.html"))
     with pytest.raises(library.DuplicateWork) as exc:
@@ -44,6 +53,7 @@ def test_fa_language_identity(db, url):
 
 def test_concurrent_creation(application, client):
     barrier = Barrier(2)
+
     def create(_):
         with application.state.db() as db:
             barrier.wait(timeout=10)
@@ -51,6 +61,7 @@ def test_concurrent_creation(application, client):
                 return library.save_work(db, data(fa_id="987654")).id
             except library.DuplicateWork as exc:
                 return exc.existing.id
+
     with ThreadPoolExecutor(max_workers=2) as pool:
         ids = list(pool.map(create, [1, 2]))
     assert ids[0] == ids[1]
@@ -67,9 +78,27 @@ def test_remakes_and_attach_url(db):
         library.update_metadata(db, manual, {"fa_url": "https://www.filmaffinity.com/fr/film123.html"})
 
 
-@pytest.mark.parametrize("query", ["fáro", "FARO sintetico", "Synthetic Lighthouse", "LA LUZ", "la lúz", "456", "https://filmaffinity.com/en/film456.html?q=1#x"])
+@pytest.mark.parametrize(
+    "query",
+    [
+        "fáro",
+        "FARO sintetico",
+        "Synthetic Lighthouse",
+        "LA LUZ",
+        "la lúz",
+        "456",
+        "https://filmaffinity.com/en/film456.html?q=1#x",
+    ],
+)
 def test_search(db, query):
-    work = library.save_work(db, data(fa_id="456", original_title="Synthetic Lighthouse", aliases=[{"title":"La luz", "language":"es"}, {"title":"La luz alternativa"}]))
+    work = library.save_work(
+        db,
+        data(
+            fa_id="456",
+            original_title="Synthetic Lighthouse",
+            aliases=[{"title": "La luz", "language": "es"}, {"title": "La luz alternativa"}],
+        ),
+    )
     result = library.search(db, q=query)
     assert [w.id for w in result["works"]] == [work.id]
     if query.casefold() in {"la luz", "la lúz"}:
@@ -77,11 +106,13 @@ def test_search(db, query):
 
 
 def test_categories_and_metadata_preservation(db):
-    work = library.save_work(db, data(categories=["Drama", "Ciencia ficción"], notes="Mi reseña", score="4.5", recommended=True))
-    library.update_metadata(db, work, {"title":"Nuevo título"})
+    work = library.save_work(
+        db, data(categories=["Drama", "Ciencia ficción"], notes="Mi reseña", score="4.5", recommended=True)
+    )
+    library.update_metadata(db, work, {"title": "Nuevo título"})
     assert work.review.notes == "Mi reseña" and work.review.score == 4.5 and work.review.recommended
     assert len(work.categories) == 2
-    library.save_work(db, WorkData.model_validate({**library.work_data(work), "categories":["Drama"]}), work)
+    library.save_work(db, WorkData.model_validate({**library.work_data(work), "categories": ["Drama"]}), work)
     assert db.scalar(select(Category).where(Category.name == "Ciencia ficción"))
     drama = db.scalar(select(Category).where(Category.name == "Drama"))
     assert library.category_count(db, drama.id) == 1
@@ -98,11 +129,20 @@ def test_category_normalization(db):
 
 
 def test_filter_dimensions_and_exact_priority(db):
-    a = library.save_work(db, WorkData(title="Luz", kind="movie", categories=["Drama"], score=8, recommended=True))
-    library.save_work(db, WorkData(title="La luz de prueba", kind="movie", categories=["Comedia"], score=7, recommended=True))
-    library.save_work(db, WorkData(title="Luz de serie", kind="series", categories=["Drama"], recommended=True))
-    cats = list(db.scalars(select(Category.id).where(Category.name.in_(["Drama","Comedia"]))))
-    result = library.search(db, q="luz", kind="movie", category_ids=cats, recommended=True, minimum=7, maximum=8)
+    a = library.save_work(
+        db, WorkData(title="Luz", kind="movie", categories=["Drama"], score=8, recommended=True)
+    )
+    library.save_work(
+        db,
+        WorkData(title="La luz de prueba", kind="movie", categories=["Comedia"], score=7, recommended=True),
+    )
+    library.save_work(
+        db, WorkData(title="Luz de serie", kind="series", categories=["Drama"], recommended=True)
+    )
+    cats = list(db.scalars(select(Category.id).where(Category.name.in_(["Drama", "Comedia"]))))
+    result = library.search(
+        db, q="luz", kind="movie", category_ids=cats, recommended=True, minimum=7, maximum=8
+    )
     assert result["count"] == 2 and result["works"][0].id == a.id
     assert library.search(db, unrated=True)["count"] == 1
 
@@ -110,49 +150,71 @@ def test_filter_dimensions_and_exact_priority(db):
 def test_manual_failure_duplicate_before_fetch(client, application):
     class FailingAdapter:
         calls = 0
+
         def fetch(self, fa_id):
             self.calls += 1
             from app.filmaffinity import MetadataUnavailable
+
             raise MetadataUnavailable("Sin conexión")
+
     adapter = FailingAdapter()
     application.state.adapter = adapter
     token = csrf(client.get("/works/new"))
-    response = client.post("/metadata", data={"csrf":token,"fa_url":"https://filmaffinity.com/en/film111.html"})
+    response = client.post(
+        "/metadata", data={"csrf": token, "fa_url": "https://filmaffinity.com/en/film111.html"}
+    )
     assert response.status_code == 422 and "Sin conexión" in response.text and "film111.html" in response.text
-    response = client.post("/works", data={"csrf":token,"fa_url":"https://filmaffinity.com/en/film111.html", "title":"Manual", "kind":"movie"})
+    response = client.post(
+        "/works",
+        data={
+            "csrf": token,
+            "fa_url": "https://filmaffinity.com/en/film111.html",
+            "title": "Manual",
+            "kind": "movie",
+        },
+    )
     assert response.status_code == 200 and "Manual" in response.text
-    response = client.post("/metadata", data={"csrf":token,"fa_url":"https://filmaffinity.com/es/film111.html?x=y"})
+    response = client.post(
+        "/metadata", data={"csrf": token, "fa_url": "https://filmaffinity.com/es/film111.html?x=y"}
+    )
     assert response.status_code == 409 and "Ya está en tu biblioteca" in response.text
     assert adapter.calls == 1
 
 
 def test_http_edit_delete_recommend_and_similarity(client, db):
     token = csrf(client.get("/works/new"))
-    fields = {"csrf":token,"title":"Obra manual", "kind":"series", "notes":"Notas\nprivadas", "score":"7.5"}
+    fields = {
+        "csrf": token,
+        "title": "Obra manual",
+        "kind": "series",
+        "notes": "Notas\nprivadas",
+        "score": "7.5",
+    }
     response = client.post("/works", data=fields)
     assert "Ficha guardada" in response.text
     work = db.scalar(select(Work))
     response = client.post("/works", data=fields)
     assert response.status_code == 409 and "Posibles coincidencias" in response.text
-    response = client.post("/works", data={**fields,"allow_similar":"on"})
+    response = client.post("/works", data={**fields, "allow_similar": "on"})
     assert response.status_code == 200
-    response = client.post(f"/works/{work.id}/recommend", data={"csrf":token})
+    response = client.post(f"/works/{work.id}/recommend", data={"csrf": token})
     assert "✦ Recomendable" in response.text and "7,5" in response.text
-    response = client.post(f"/works/{work.id}/edit", data={**fields,"title":"Editada", "score":""})
+    response = client.post(f"/works/{work.id}/edit", data={**fields, "title": "Editada", "score": ""})
     assert "Editada" in response.text and "Sin nota" in response.text
-    assert client.post(f"/works/{work.id}/delete", data={"csrf":token}).status_code == 422
-    assert client.post(f"/works/{work.id}/delete", data={"csrf":token,"confirm":"yes"}).status_code == 200
+    assert client.post(f"/works/{work.id}/delete", data={"csrf": token}).status_code == 422
+    assert client.post(f"/works/{work.id}/delete", data={"csrf": token, "confirm": "yes"}).status_code == 200
     assert client.get(f"/works/{work.id}").status_code == 404
 
 
 def test_category_ui(client, db):
     token = csrf(client.get("/categories"))
-    assert client.post("/categories", data={"csrf":token,"name":"Nueva"}).status_code == 200
-    assert client.post("/categories", data={"csrf":token,"name":" nueva "}).status_code == 422
+    assert client.post("/categories", data={"csrf": token, "name": "Nueva"}).status_code == 200
+    assert client.post("/categories", data={"csrf": token, "name": " nueva "}).status_code == 422
     item = db.scalar(select(Category).where(Category.name == "Nueva"))
+    category_id = item.id
     work = library.save_work(db, data(categories=["Nueva"]))
-    response = client.post("/categories", data={"csrf":token,"id":str(item.id),"action":"delete"})
-    assert "1 fichas" in response.text and db.get(Category,item.id)
-    client.post("/categories", data={"csrf":token,"id":str(item.id),"action":"delete","confirm":"yes"})
+    response = client.post("/categories", data={"csrf": token, "id": str(item.id), "action": "delete"})
+    assert "1 fichas" in response.text and db.get(Category, item.id)
+    client.post("/categories", data={"csrf": token, "id": str(item.id), "action": "delete", "confirm": "yes"})
     db.expire_all()
-    assert db.get(Work,work.id) and db.get(Category,item.id) is None
+    assert db.get(Work, work.id) and db.get(Category, category_id) is None
