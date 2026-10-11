@@ -2,6 +2,7 @@
 
 ## Sin publicar — preparación de V1 (0.1.0)
 
+- Alternativa `compose.dockhand.yaml`: construcción automática desde un archivo HTTPS de GitHub, sin terminal ni Git en Dockhand; guía de instalación desde el móvil.
 - Biblioteca compartida de películas y series con cuenta única, notas opcionales, reseñas, categorías, alias y Recomendable.
 - Identidad FilmAffinity única, alta manual y adaptador opcional limitado con vista previa.
 - Búsqueda normalizada paginada y filtros; prueba con 10.000 obras sintéticas.

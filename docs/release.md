@@ -22,4 +22,4 @@ docker --config "$anon_config_dir" pull ghcr.io/<namespace>/no-lo-vuelvas-a-ver:
 
 Comprueba después el manifiesto con `docker buildx imagetools inspect` y haz un smoke en equipos o runners de ambas arquitecturas. No hay soporte anunciado para ARM de 32 bits. Si falla el acceso anónimo, revisa la visibilidad y el tag antes de compartir instrucciones de instalación por imagen.
 
-Para despliegue inicial sin GHCR sigue el build local del README. La instalación con Compose usa `image:` siempre; la alternativa de construcción local es un comando independiente.
+Para despliegue inicial sin GHCR puedes usar el build local del README o `compose.dockhand.yaml`, que hace la construcción automáticamente desde un archivo HTTPS en el administrador. El stack principal `compose.yaml` utiliza `image:` sin `build:`; el stack alternativo de Dockhand utiliza `build:` a petición del usuario que instala sin terminal.

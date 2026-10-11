@@ -36,11 +36,15 @@ jobs:
           uv export --frozen --no-dev --format requirements-txt --no-header --output-file /tmp/requirements-check.lock --quiet
           cmp requirements.lock /tmp/requirements-check.lock
       - name: Validar Compose y parámetros necesarios
-        run: uv run --frozen python scripts/check_compose.py
+        run: |
+          uv run --frozen python scripts/check_compose.py
+          uv run --frozen python scripts/check_compose.py compose.dockhand.yaml
       - name: Construir imagen de la arquitectura del runner
         run: docker build -t no-lo-vuelvas-a-ver:test .
       - name: Smoke de contenedor y persistencia
         run: uv run --frozen python tests/smoke_image.py no-lo-vuelvas-a-ver:test
+      - name: Construcción desde archivo y smoke de persistencia
+        run: uv run --frozen python tests/smoke_archive.py
       - name: Flujos de navegador con datos ficticios
         if: matrix.arch == 'amd64'
         run: |

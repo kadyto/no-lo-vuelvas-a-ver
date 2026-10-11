@@ -10,15 +10,16 @@ LABEL org.opencontainers.image.title="No lo vuelvas a ver" \
       org.opencontainers.image.licenses="MIT"
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 DATA_DIR=/data PATH="/app/.venv/bin:$PATH"
 WORKDIR /app
-COPY requirements.lock ./
+ARG SOURCE_DIR=.
+COPY ${SOURCE_DIR}/requirements.lock ./
 # The optional secret extends build trust in managed environments; it is never copied into a layer.
 RUN --mount=type=secret,id=proxy_ca \
     python -m venv .venv && \
     if [ -f /run/secrets/proxy_ca ]; then PIP_CERT=/run/secrets/proxy_ca .venv/bin/pip install --no-cache-dir --require-hashes -r requirements.lock; \
     else .venv/bin/pip install --no-cache-dir --require-hashes -r requirements.lock; fi
-COPY app ./app
-COPY migrations ./migrations
-COPY alembic.ini LICENSE ./
+COPY ${SOURCE_DIR}/app ./app
+COPY ${SOURCE_DIR}/migrations ./migrations
+COPY ${SOURCE_DIR}/alembic.ini ${SOURCE_DIR}/LICENSE ./
 RUN mkdir /data && chown 10001:10001 /data && chmod -R a+rX /app
 USER 10001:10001
 EXPOSE 8000

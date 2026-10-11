@@ -9,5 +9,6 @@
 - Sin red real a FilmAffinity en pruebas: usar HTML sintético y MockTransport.
 - Verificar: `uv sync --frozen`, `uv run --frozen ruff check app migrations tests scripts`, `uv run --frozen pytest -q`.
 - Con Docker: validar Compose con `scripts/check_compose.py`, construir y ejecutar `tests/smoke_image.py`; navegador con `tests/browser_smoke.py`.
+- Para Dockhand sin terminal: validar `scripts/check_compose.py compose.dockhand.yaml` y ejecutar `tests/smoke_archive.py`; mantener coherentes raíz del tar, ruta Dockerfile y SOURCE_DIR. `compose.yaml` sigue siendo instalación por imagen.
 - Tras cambiar dependencias: `uv lock`, `uv export --frozen --no-dev --format requirements-txt --no-header --output-file requirements.lock --quiet` y repetir controles afectados.
 - Actualizar guías y `docs/verificacion.md` con resultados reales. No crear tags ni publicar releases sin una versión verificada y autorización.

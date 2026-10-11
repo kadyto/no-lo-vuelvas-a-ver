@@ -24,7 +24,9 @@ No se incluye una biblioteca precargada. Las capturas y pruebas usan datos ficti
 
 Necesitas Docker con Compose v2, almacenamiento local y CPU **linux/amd64 o linux/arm64**. Synology, UGREEN y otros NAS son ejemplos posibles si permiten Docker compatible. No se promete ARM de 32 bits ni compatibilidad con NAS sin Docker.
 
-El stack listo para pegar en Dockhand o Portainer es [compose.yaml](compose.yaml). Ambos son administradores alternativos, no forman parte de este stack. Solo se ejecuta un contenedor.
+**Desde el móvil en Dockhand:** pega [compose.dockhand.yaml](compose.dockhand.yaml) y sigue [la guía de Dockhand](docs/dockhand.md). Docker descarga un archivo HTTPS del repositorio y construye automáticamente la imagen; no necesitas terminal ni Git en el constructor. Define ruta de datos, UID/GID, usuario y contraseña en el panel de variables y despliega con build habilitado.
+
+Para instalar mediante imagen ya construida usa [compose.yaml](compose.yaml). Dockhand y Portainer son administradores alternativos, no forman parte de ninguno de los stacks. Solo se ejecuta un contenedor.
 
 **Antes de la primera publicación en GHCR no hay una imagen pública garantizada.** Puedes construir la imagen en tu host Docker y usarla con el mismo stack:
 
@@ -42,7 +44,7 @@ Introduce estas variables en la pantalla del administrador o en un `.env` para C
 
 | Variable | Valor que debes elegir |
 | --- | --- |
-| `APP_IMAGE` | Imagen pública con tag concreto, o `no-lo-vuelvas-a-ver:local` tras construirla |
+| `APP_IMAGE` | Solo en `compose.yaml`: imagen pública con tag concreto, o `no-lo-vuelvas-a-ver:local` tras construirla. No se usa en `compose.dockhand.yaml` |
 | `DATA_DIR` | **Ruta absoluta** a una carpeta existente del host Docker, local y escribible |
 | `INITIAL_ADMIN_USER` | Nombre que elijas para la única cuenta |
 | `INITIAL_ADMIN_PASSWORD` | Contraseña propia de 12–256 caracteres; no hay una predeterminada |
@@ -56,9 +58,9 @@ Las variables `INITIAL_ADMIN_*` solo crean la cuenta si no existe. Recrear el co
 
 ### Dockhand
 
-Usa **Dockhand de Finsys, [dockhand.pro](https://dockhand.pro/)**. En el entorno Docker elegido abre **Stacks → New Stack**, asigna un nombre y pega [compose.yaml](compose.yaml). Configura las variables de la tabla, crea antes la carpeta de datos y despliega. Comprueba los logs y el estado saludable; abre el puerto del host e inicia sesión con tu cuenta. También puedes crear el stack desde Git, con la URL de este repositorio, referencia `main` y ruta `compose.yaml`; configura igualmente sus variables. Los nombres de controles pueden cambiar según la versión.
+Usa **Dockhand de Finsys, [dockhand.pro](https://dockhand.pro/)**. En el entorno Docker elegido abre **Stacks → New Stack**, asigna un nombre y pega [compose.dockhand.yaml](compose.dockhand.yaml) para construir automáticamente desde el archivo de GitHub. Configura las variables de la tabla excepto `APP_IMAGE`, crea antes la carpeta de datos y despliega con build habilitado. Comprueba los logs y el estado saludable; abre el puerto del host e inicia sesión con tu cuenta. También puedes crear el stack desde Git, con la URL de este repositorio, referencia `main` y ruta `compose.dockhand.yaml`. Si tienes una imagen ya construida, puedes elegir `compose.yaml`. Los nombres de controles pueden cambiar según la versión.
 
-Consulta [la guía paso a paso de instalación](docs/instalacion.md), incluido el camino inicial con imagen local.
+Consulta [la guía de Dockhand desde el móvil](docs/dockhand.md) y [la guía general de instalación](docs/instalacion.md).
 
 ### Portainer
 
@@ -93,6 +95,8 @@ Usa un nombre nuevo para cada copia y guarda otra copia fuera de la carpeta de d
 
 Para actualizar, fija el nuevo tag en `APP_IMAGE`, haz copia, descarga y recrea: `docker compose pull` y `docker compose up -d`. Cambiar a una imagen anterior puede requerir restaurar la base previa; **cambiar el tag no revierte los datos**. Sigue [mantenimiento, restauración y solución de problemas](docs/mantenimiento.md). El flujo normal nunca borra `/data` ni volúmenes.
 
+Si instalaste con `compose.dockhand.yaml`, haz copia y solicita **reconstruir y recrear/desplegar** en Dockhand para descargar el código de `main`. Conserva la carpeta y las variables. [La guía móvil](docs/dockhand.md#cómo-actualizar) explica también cómo fijar un commit.
+
 ## Desarrollo y verificación
 
 Python 3.12 y [uv](https://docs.astral.sh/uv/). Dependencias fijadas en `pyproject.toml` y `uv.lock`; `requirements.lock` incluye hashes para Docker.
@@ -102,8 +106,10 @@ uv sync --frozen
 uv run --frozen pytest -q
 uv run --frozen ruff check app migrations tests scripts
 uv run --frozen python scripts/check_compose.py
+uv run --frozen python scripts/check_compose.py compose.dockhand.yaml
 docker build -t no-lo-vuelvas-a-ver:test .
 uv run --frozen python tests/smoke_image.py no-lo-vuelvas-a-ver:test
+uv run --frozen python tests/smoke_archive.py
 ```
 
 Para arrancar en desarrollo, crea una carpeta absoluta vacía y define `DATA_DIR`, `INITIAL_ADMIN_USER` y `INITIAL_ADMIN_PASSWORD` en tu shell, sin incluir secretos en comandos compartidos. Ejecuta `uv run --frozen uvicorn app.main:app --host 127.0.0.1 --port 8000`. No se cargan datos de ejemplo automáticamente.

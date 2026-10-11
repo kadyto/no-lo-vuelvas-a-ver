@@ -26,6 +26,8 @@ La base debe residir en almacenamiento local del host Docker. No montes el archi
 
 ## 2. Elegir imagen
 
+**Desde Dockhand sin terminal:** usa [compose.dockhand.yaml](../compose.dockhand.yaml) y [la guía móvil](dockhand.md). Docker construye automáticamente desde un archivo HTTPS de GitHub; no necesita Git en el constructor ni una imagen pública en GHCR. Las alternativas siguientes son para `compose.yaml`, el stack de instalación por imagen.
+
 **Aún sin publicación:** descarga o clona este repositorio en el host Docker de destino, entra en su carpeta y ejecuta:
 
 ```sh
@@ -41,12 +43,12 @@ En el stack elige `APP_IMAGE=no-lo-vuelvas-a-ver:local`. Esta alternativa es ind
 Estas instrucciones corresponden al producto [dockhand.pro](https://dockhand.pro/) y su [manual oficial](https://dockhand.pro/manual/), no a otro producto con nombre parecido.
 
 1. Selecciona el entorno Docker de destino y abre **Stacks → New Stack**.
-2. Asigna un nombre libre, por ejemplo el slug `no-lo-vuelvas-a-ver`, y pega el contenido íntegro de `compose.yaml` en el editor Compose.
-3. En las variables del stack añade `APP_IMAGE`, `DATA_DIR`, `INITIAL_ADMIN_USER`, `INITIAL_ADMIN_PASSWORD`, `APP_UID`, `APP_GID` y `APP_PORT`. Las cuatro primeras son obligatorias. El resto de opciones aparecen en la tabla del README.
-4. Para imagen local evita forzar la descarga. Despliega y revisa estado y logs.
+2. Asigna un nombre libre, por ejemplo el slug `no-lo-vuelvas-a-ver`, y pega `compose.dockhand.yaml` para construir automáticamente desde HTTPS; usa `compose.yaml` si ya dispones de una imagen.
+3. Añade `DATA_DIR`, `INITIAL_ADMIN_USER`, `INITIAL_ADMIN_PASSWORD`, `APP_UID`, `APP_GID` y `APP_PORT` en las variables. Las tres primeras son obligatorias. `APP_IMAGE` solo es necesario para `compose.yaml`.
+4. Con `compose.dockhand.yaml` habilita construir/build. Para una imagen local ya construida evita forzar su descarga. Despliega y revisa estado y logs.
 5. Abre el host en el puerto elegido e inicia sesión. Crea una obra ficticia, reinicia el contenedor y confirma que sigue ahí; después elimínala desde la aplicación.
 
-Como alternativa crea el stack con origen **Git**, la URL de este repositorio, referencia `main` y archivo `compose.yaml`. Define sus variables en Dockhand, incluidas las opciones del entorno que despliega. No necesitas añadir un `.env` privado al repositorio. Según la versión, el administrador puede guardar overrides internamente; conserva sus variables cuando actualices.
+Como alternativa crea el stack con origen **Git**, la URL de este repositorio, referencia `main` y archivo `compose.dockhand.yaml` para construcción automática o `compose.yaml` para imagen. Define sus variables en Dockhand, incluidas las opciones del entorno que despliega. No necesitas añadir un `.env` privado al repositorio. Según la versión, el administrador puede guardar overrides internamente; conserva sus variables cuando actualices.
 
 ## 4. Portainer
 
