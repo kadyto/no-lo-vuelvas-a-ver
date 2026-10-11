@@ -1,0 +1,26 @@
+{% extends 'base.html' %}
+{% block content %}
+<section class="library-heading"><div><div class="eyebrow">EL ARCHIVO DE LO QUE YA VISTE</div><h1>Una historia, un recuerdo.</h1><p class="intro">Encuentra tu nota y tu opinión antes de volver a darle al play.</p></div><a class="button primary" href="/works/new">＋ Añadir obra</a></section>
+<form method="get" class="search-form" role="search">
+  <input type="hidden" name="kind" value="{{ params.get('kind','') }}">
+  <div class="search-box"><label class="sr-only" for="search">Busca una película o serie</label><span aria-hidden="true">⌕</span><input id="search" type="search" name="q" value="{{ params.get('q','') }}" placeholder="Busca una película o serie" maxlength="500"><button class="button primary">Buscar</button></div>
+  <p class="search-hint">Título, título original, alias o enlace de FilmAffinity.</p>
+  <div class="library-controls"><nav class="type-tabs" aria-label="Tipo de obra">{% for key,label in [('', 'Todos'),('movie','Películas'),('series','Series')] %}<a href="{{ kind_url(key) }}" {% if params.get('kind','') == key %}aria-current="page"{% endif %}>{{ label }}</a>{% endfor %}</nav>
+  <details class="filters" {% if params.getlist('category') or params.get('recommended') or params.get('minimum') or params.get('maximum') or params.get('unrated') %}open{% endif %}><summary>Filtros y orden</summary><div class="filter-panel">
+    <fieldset><legend>Categorías <small>(cualquiera de las seleccionadas)</small></legend><div class="chips">{% for c in categories %}<label class="check-chip"><input type="checkbox" name="category" value="{{ c.id }}" {% if c.id|string in params.getlist('category') %}checked{% endif %}>{{ c.name }}</label>{% endfor %}</div></fieldset>
+    <div class="filter-row"><label class="checkbox"><input type="checkbox" name="recommended" value="1" {% if params.get('recommended') %}checked{% endif %}> Recomendables</label><label class="checkbox"><input type="checkbox" name="unrated" value="1" {% if params.get('unrated') %}checked{% endif %}> Sin nota</label>
+    <label>Nota mínima<input type="number" name="minimum" min="1" max="10" step="0.5" value="{{ params.get('minimum','') }}"></label><label>Nota máxima<input type="number" name="maximum" min="1" max="10" step="0.5" value="{{ params.get('maximum','') }}"></label>
+    <label>Orden<select name="sort">{% for key,label in [('title','Título'),('score','Nota más alta'),('added','Últimas incorporaciones'),('watched','Visionado más reciente')] %}<option value="{{ key }}" {% if params.get('sort','title') == key %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label></div>
+    <div class="actions"><button class="button">Aplicar filtros</button><a href="/">Limpiar búsqueda y filtros</a></div>
+  </div></details></div>
+</form>
+<div class="result-heading"><h2>Tu biblioteca <span>{{ count }}</span></h2><span>Página {{ page }} de {{ pages }}</span></div>
+{% if works %}<div class="work-grid">{% for work in works %}<article class="work-card">
+  <a class="card-link" href="/works/{{ work.id }}?{{ {'return_to':return_to}|urlencode }}"><div class="card-top"><span class="work-type">{{ 'PELÍCULA' if work.kind == 'movie' else 'SERIE' }}</span><span class="score {% if work.review.score is none %}unrated{% endif %}">{{ work.review.score|score }}{% if work.review.score is not none %}<small>/10</small>{% endif %}</span></div>
+  <h3>{{ work.title }}</h3><p class="card-year">{{ work.year or 'Año desconocido' }}{% if work.original_title and work.original_title != work.title %} · {{ work.original_title }}{% endif %}</p>
+  {% if matches.get(work.id) %}<p class="alias-match">Coincide con: {{ matches[work.id] }}</p>{% endif %}
+  <div class="card-bottom">{% if work.review.recommended %}<span class="recommend-badge">✦ Recomendable</span>{% else %}<span class="muted">En tu biblioteca</span>{% endif %}<span aria-hidden="true">↗</span></div></a>
+</article>{% endfor %}</div>
+{% else %}<section class="empty-state"><div class="empty-reel" aria-hidden="true">◎</div><h2>{{ 'No consta en tu biblioteca' if params.get('q') or params.get('kind') or params.getlist('category') or params.get('recommended') or params.get('unrated') or params.get('minimum') or params.get('maximum') else 'Tu próxima historia empieza aquí' }}</h2><p>{{ 'Prueba otra búsqueda o registra la obra si ya la has visto.' if params else 'Añade tu primera película o serie. La próxima vez, tendrás tu opinión a mano.' }}</p><a class="button primary" href="/works/new?{{ {'q':params.get('q',''),'return_to':return_to}|urlencode }}">Añadir a la biblioteca</a></section>{% endif %}
+{% if pages > 1 %}<nav class="pagination" aria-label="Paginación">{% if page > 1 %}<a class="button" href="{{ page_url(page-1) }}">← Anterior</a>{% endif %}<span>{{ page }} / {{ pages }}</span>{% if page < pages %}<a class="button" href="{{ page_url(page+1) }}">Siguiente →</a>{% endif %}</nav>{% endif %}
+{% endblock %}

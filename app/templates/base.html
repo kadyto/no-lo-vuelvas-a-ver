@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#182925">
+  <title>{% block title %}No lo vuelvas a ver{% endblock %}</title>
+  <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/app.css"><script src="/static/app.js" defer></script>
+</head>
+<body>
+<a class="skip" href="#content">Saltar al contenido</a>
+<header class="site-header"><div class="header-inner">
+  <a class="brand" href="/"><span class="brand-icon" aria-hidden="true">N<span>↺</span></span><span>No lo vuelvas a ver<small>Tu memoria de películas y series</small></span></a>
+  {% if authenticated %}<nav aria-label="Navegación principal"><a href="/">Biblioteca</a><a href="/categories">Categorías</a><a href="/settings">Ajustes</a><form action="/logout" method="post"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="nav-button">Salir</button></form></nav>{% endif %}
+</div></header>
+<main id="content" class="shell">
+  {% if error %}<div class="message error" role="alert">{{ error }}</div>{% endif %}
+  {% if notice %}<div class="message" role="status">{{ notice }}</div>{% endif %}
+  {% block content %}{% endblock %}
+</main>
+<footer class="site-footer">Una biblioteca. Tus recuerdos. <span>Sin conexión, sin distracciones.</span></footer>
+</body></html>

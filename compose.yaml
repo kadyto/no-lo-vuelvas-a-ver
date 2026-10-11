@@ -1,0 +1,28 @@
+services:
+  library:
+    image: ${APP_IMAGE:?Define APP_IMAGE con una imagen publicada o una imagen local construida}
+    restart: unless-stopped
+    user: "${APP_UID:-10001}:${APP_GID:-10001}"
+    ports:
+      - "${APP_PORT:-8000}:8000"
+    environment:
+      DATA_DIR: /data
+      INITIAL_ADMIN_USER: ${INITIAL_ADMIN_USER:?Define el usuario inicial}
+      INITIAL_ADMIN_PASSWORD: ${INITIAL_ADMIN_PASSWORD:?Define una contraseña inicial propia de al menos 12 caracteres}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      SESSION_HOURS: ${SESSION_HOURS:-12}
+      FILMAFFINITY_ENABLED: ${FILMAFFINITY_ENABLED:-false}
+    volumes:
+      - type: bind
+        source: ${DATA_DIR:?Define DATA_DIR como ruta absoluta local del host Docker}
+        target: /data
+        bind:
+          create_host_path: false
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+    security_opt:
+      - no-new-privileges:true
