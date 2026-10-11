@@ -12,6 +12,7 @@ services:
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
       SESSION_HOURS: ${SESSION_HOURS:-12}
       FILMAFFINITY_ENABLED: ${FILMAFFINITY_ENABLED:-false}
+      UPDATE_CHECK_ENABLED: ${UPDATE_CHECK_ENABLED:-true}
     volumes:
       - type: bind
         source: ${DATA_DIR:?Define DATA_DIR como ruta absoluta local del host Docker}

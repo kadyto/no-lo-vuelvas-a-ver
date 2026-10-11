@@ -12,3 +12,4 @@
 - Para Dockhand sin terminal: validar `scripts/check_compose.py compose.dockhand.yaml` y ejecutar `tests/smoke_archive.py`; mantener coherentes raíz del tar, ruta Dockerfile y SOURCE_DIR. `compose.yaml` sigue siendo instalación por imagen.
 - Tras cambiar dependencias: `uv lock`, `uv export --frozen --no-dev --format requirements-txt --no-header --output-file requirements.lock --quiet` y repetir controles afectados.
 - Actualizar guías y `docs/verificacion.md` con resultados reales. No crear tags ni publicar releases sin una versión verificada y autorización.
+- Avisos de actualización en `app/updates.py`: nunca enviar biblioteca/credenciales, bloquear navegación, instalar cambios ni eliminar la caché/límites. Simular GitHub en tests y navegador. Mantener `app/_archive_revision.txt` como `$Format:%H$` con `export-subst`; nunca sustituirlo por el HEAD remoto durante el build.

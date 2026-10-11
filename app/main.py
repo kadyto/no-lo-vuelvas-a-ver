@@ -21,6 +21,7 @@ from app.config import Settings
 from app.db import make_engine, migrate, now, sessions
 from app.filmaffinity import FilmAffinityAdapter, MetadataUnavailable, canonical_url, lookup_url, parse_url
 from app.models import Admin, BrowserSession, Category, ImportPreview, MetadataCache, Work
+from app.updates import BuildInfo, UpdateChecker
 
 ROOT = Path(__file__).resolve().parent
 templates = Jinja2Templates(directory=str(ROOT / "templates"))
@@ -55,6 +56,8 @@ def create_app(settings=None, adapter=None):
         title="No lo vuelvas a ver", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan
     )
     app.state.adapter = adapter or FilmAffinityAdapter(settings.filmaffinity_enabled)
+    app.state.build = BuildInfo.from_env()
+    app.state.updates = UpdateChecker(app.state.build, settings.update_check_enabled)
     app.mount("/static", StaticFiles(directory=ROOT / "static"), name="static")
 
     def render(request, template, status=200, **context):
@@ -62,6 +65,8 @@ def create_app(settings=None, adapter=None):
             request=request,
             name=template,
             context={
+                "build": app.state.build,
+                "update_check_enabled": settings.update_check_enabled,
                 "csrf": request.state.session.csrf if getattr(request.state, "session", None) else "",
                 "authenticated": bool(
                     getattr(request.state, "session", None) and request.state.session.authenticated
@@ -166,6 +171,10 @@ def create_app(settings=None, adapter=None):
         response = render(request, "login.html")
         set_cookie(response, token)
         return response
+
+    @app.get("/updates")
+    async def updates():
+        return await run_in_threadpool(app.state.updates.check)
 
     @app.post("/login")
     async def login(request: Request):

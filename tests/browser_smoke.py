@@ -69,6 +69,16 @@ def main():
                         executable_path=executable, args=["--no-sandbox", "--disable-dev-shm-usage"]
                     )
                     context = browser.new_context(viewport={"width": 1440, "height": 1000})
+                    update_result = {
+                        "status": "available",
+                        "message": "Nueva versión: v9.0.0",
+                        "url": "https://github.com/kadyto/no-lo-vuelvas-a-ver/releases/tag/v9.0.0",
+                    }
+
+                    def update_route(route):
+                        route.fulfill(json=update_result)
+
+                    context.route("**/updates", update_route)
                     page = context.new_page()
                     errors = []
                     page.on("pageerror", lambda error: errors.append(str(error)))
@@ -76,6 +86,23 @@ def main():
                     page.get_by_label("Usuario", exact=True).fill("demo")
                     page.get_by_label("Contraseña", exact=True).fill(password)
                     page.get_by_role("button", name="Entrar", exact=True).click()
+                    assert page.get_by_role("link", name="Proyecto en GitHub", exact=True).get_attribute(
+                        "href"
+                    ) == ("https://github.com/kadyto/no-lo-vuelvas-a-ver")
+                    assert page.get_by_text("Una historia, un recuerdo.", exact=True).count() == 0
+                    page.get_by_role("link", name="Nueva versión: v9.0.0", exact=True).wait_for(
+                        state="visible"
+                    )
+                    update_result = {
+                        "status": "unavailable",
+                        "message": "No se pudieron comprobar las actualizaciones",
+                    }
+                    page.reload()
+                    page.get_by_text("No se pudieron comprobar las actualizaciones", exact=True).wait_for(
+                        state="visible"
+                    )
+                    assert page.locator("[data-update-link]").is_hidden()
+                    update_result = {"status": "current", "message": "Al día"}
                     assert page.get_by_text("Tu próxima historia empieza aquí").is_visible()
                     records = [
                         ("El último proyector", "movie", "8.5", True),
@@ -120,6 +147,7 @@ def main():
                         has_touch=True,
                         device_scale_factor=1,
                     )
+                    mobile.route("**/updates", update_route)
                     mp = mobile.new_page()
                     mp.goto(base)
                     mp.locator("#username").fill("demo")
@@ -154,7 +182,7 @@ def main():
                     assert not errors
                     browser.close()
                     print(
-                        "BROWSER_OK: desktop/mobile login, create, search, return state, edit, recommendation, deletion, manual fallback, no horizontal overflow"
+                        "BROWSER_OK: desktop/mobile login, create, search, return state, edit, recommendation, deletion, manual fallback, update notice/offline, no horizontal overflow"
                     )
             finally:
                 process.terminate()

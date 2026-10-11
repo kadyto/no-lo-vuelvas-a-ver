@@ -6,6 +6,7 @@ No se debe anunciar una imagen pública ni una arquitectura validada antes de co
 2. Verifica README, versiones, CHANGELOG y migraciones. Prueba una copia y restauración, y una instalación vacía.
 3. Cuando exista una versión verificada, actualiza CHANGELOG y `pyproject.toml`, regenera el lock y crea intencionadamente la etiqueta estable `vX.Y.Z` en el commit revisado. No reutilices una etiqueta ya publicada.
 4. El workflow `publish.yml` ejecuta primero `checks.yml`. Solo si pasa construye el manifiesto `linux/amd64,linux/arm64` y publica el tag de versión y `latest`. Rechaza nombres que no sean estables `v` más tres componentes numéricos.
+5. Tras comprobar la imagen y su disponibilidad pública, publica una **GitHub Release** para ese tag, con sus cambios y notas de migración. El avisador de imágenes estables consulta esa release; crear únicamente el tag no basta para mostrarla. El código instalado recibe versión y revisión mediante los argumentos de build, sin variables adicionales del usuario.
 
 Publica con el `GITHUB_TOKEN` del workflow y permiso `packages: write`, sin PAT personal. Los controles de pull requests tienen únicamente `contents: read`, no reciben secretos, no hacen login a GHCR y no publican. El nombre de imagen se deriva de `GITHUB_REPOSITORY` en minúsculas. Incluye etiquetas OCI de título, versión, origen, revisión y licencia. La licencia OCI MIT describe el código, no derechos sobre datos externos.
 

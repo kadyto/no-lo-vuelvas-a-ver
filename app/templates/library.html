@@ -1,6 +1,6 @@
 {% extends 'base.html' %}
 {% block content %}
-<section class="library-heading"><div><div class="eyebrow">EL ARCHIVO DE LO QUE YA VISTE</div><h1>Una historia, un recuerdo.</h1><p class="intro">Encuentra tu nota y tu opinión antes de volver a darle al play.</p></div><a class="button primary" href="/works/new">＋ Añadir obra</a></section>
+<section class="library-heading"><h1 class="sr-only">Tu biblioteca</h1><a class="button primary" href="/works/new">＋ Añadir obra</a></section>
 <form method="get" class="search-form" role="search">
   <input type="hidden" name="kind" value="{{ params.get('kind','') }}">
   <div class="search-box"><label class="sr-only" for="search">Busca una película o serie</label><span aria-hidden="true">⌕</span><input id="search" type="search" name="q" value="{{ params.get('q','') }}" placeholder="Busca una película o serie" maxlength="500"><button class="button primary">Buscar</button></div>

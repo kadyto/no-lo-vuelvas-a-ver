@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 FROM python:3.12.14-slim-bookworm
 ARG VERSION=development
-ARG SOURCE
+ARG SOURCE=https://github.com/kadyto/no-lo-vuelvas-a-ver
 ARG REVISION
 LABEL org.opencontainers.image.title="No lo vuelvas a ver" \
       org.opencontainers.image.version=$VERSION \
@@ -9,6 +9,7 @@ LABEL org.opencontainers.image.title="No lo vuelvas a ver" \
       org.opencontainers.image.revision=$REVISION \
       org.opencontainers.image.licenses="MIT"
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 DATA_DIR=/data PATH="/app/.venv/bin:$PATH"
+ENV APP_VERSION=$VERSION APP_REVISION=$REVISION APP_SOURCE=$SOURCE
 WORKDIR /app
 ARG SOURCE_DIR=.
 COPY ${SOURCE_DIR}/requirements.lock ./

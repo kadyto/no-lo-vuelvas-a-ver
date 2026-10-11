@@ -2,7 +2,7 @@
 
 **Tu memoria de películas y series.** Una biblioteca personal para comprobar qué has visto, qué nota pusiste, qué pensaste y si merece recomendarse. El nombre no significa que las obras sean malas.
 
-Una instalación, una biblioteca compartida y una cuenta de acceso. Interfaz en español, móvil y escritorio. Sin registro público, telemetría, CDN, API de pago ni cuentas externas obligatorias. Toda la biblioteca funciona sin Internet; únicamente el autocompletado opcional de FilmAffinity necesita conectividad.
+Una instalación, una biblioteca compartida y una cuenta de acceso. Interfaz en español, móvil y escritorio. Sin registro público, telemetría, CDN, API de pago ni cuentas externas obligatorias. Toda la biblioteca funciona sin Internet; el autocompletado opcional de FilmAffinity y el aviso opcional de actualizaciones necesitan conectividad.
 
 ## Qué incluye V1
 
@@ -13,6 +13,7 @@ Una instalación, una biblioteca compartida y una cuenta de acceso. Interfaz en 
 - Búsqueda por títulos, alias, ID y URL; ignora mayúsculas y tildes. Filtros combinables, orden y paginación del servidor.
 - Gestión de categorías, cambio de contraseña, JSON completo, CSV y importación con vista previa y conflictos explícitos.
 - SQLite persistente, migraciones y copias consistentes antes de cambios de esquema.
+- Enlace al proyecto en GitHub y aviso de actualizaciones: releases estables o cambios en `main` para instalaciones de desarrollo, sin instalación automática.
 
 No se incluye una biblioteca precargada. Las capturas y pruebas usan datos ficticios creados expresamente.
 
@@ -53,6 +54,7 @@ Introduce estas variables en la pantalla del administrador o en un `.env` para C
 | `COOKIE_SECURE` | `false` para HTTP privado; `true` para acceso únicamente por HTTPS |
 | `SESSION_HOURS` | Expiración absoluta de sesión, de 1 a 168 horas; por defecto 12 |
 | `FILMAFFINITY_ENABLED` | `false` por defecto; ver [limitaciones y acceso](docs/filmaffinity.md) |
+| `UPDATE_CHECK_ENABLED` | `true` por defecto; aviso con caché de seis horas. `false` desactiva las consultas a GitHub; ver [actualizaciones](docs/actualizaciones.md) |
 
 Las variables `INITIAL_ADMIN_*` solo crean la cuenta si no existe. Recrear el contenedor no cambia la contraseña. El hash se guarda en SQLite. Cambia la contraseña en **Ajustes**; el cambio cierra todas las sesiones. Después del primer arranque puedes sustituir la contraseña inicial del stack por un valor no secreto de al menos 12 caracteres: se ignorará mientras exista la cuenta. No guardes secretos en Git ni en capturas del administrador.
 

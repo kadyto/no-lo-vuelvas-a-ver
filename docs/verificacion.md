@@ -2,6 +2,12 @@
 
 Comprobaciones ejecutadas el 11 de octubre de 2026 en un entorno Linux amd64 con Python 3.12.14, Docker Engine y Compose v2. No representan una prueba en un NAS concreto ni una publicación en GHCR.
 
+## Aviso de actualizaciones e inicio compacto
+
+Se retiró el bloque introductorio y se añadió enlace a GitHub, identificación de la versión instalada y aviso opcional de actualizaciones. Las pruebas aisladas del avisador pasaron **23 casos en 0,10 s**: releases estables comparadas numéricamente, cambios de main, caché de seis horas, reintento tras fallo, ausencia de identificador, desactivación, datos inválidos, respuestas grandes, redirecciones rechazadas, concurrencia y metadatos de git archive. No consultan GitHub real. Lint, formato y comprobación de diff pasan.
+
+La batería completa, imágenes, Compose, metadatos de archivo y flujos de escritorio/móvil se verifican en Controles. El script de navegador intercepta la comprobación para probar una nueva versión ficticia y un fallo de conexión sin consultar GitHub. Las verificaciones completas de las secciones siguientes corresponden a las revisiones indicadas allí; la identificación del archivo público real de GitHub de esta revisión se comprobará tras publicar el código.
+
 ## Revisión del cliente Requests
 
 El adaptador usa Requests Session y mantiene el dominio solicitado. Las pruebas normales usan un transporte Requests sintético y nunca consultan FilmAffinity. La batería aislada del adaptador pasó **56 pruebas en 0,46 s**, incluyendo cabeceras predeterminadas, dominio móvil, identidad canónica, rechazo de destinos/IDs incorrectos, cookies de redirección, cuerpos de redirección sin descargar y diagnóstico sin atribuir el bloqueo a JavaScript.

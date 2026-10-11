@@ -18,5 +18,5 @@
   {% if notice %}<div class="message" role="status">{{ notice }}</div>{% endif %}
   {% block content %}{% endblock %}
 </main>
-<footer class="site-footer">Una biblioteca. Tus recuerdos. <span>Sin conexión, sin distracciones.</span></footer>
+<footer class="site-footer"><a href="{{ build.project_url }}" target="_blank" rel="noopener noreferrer">Proyecto en GitHub</a><span class="app-version">{{ build.label }}</span>{% if authenticated and update_check_enabled %}<div class="update-notice" data-update-notice role="status" aria-live="polite"><span data-update-status>Comprobando actualizaciones…</span><a class="update-badge" data-update-link href="{{ build.project_url }}" target="_blank" rel="noopener noreferrer" hidden></a></div>{% endif %}</footer>
 </body></html>
