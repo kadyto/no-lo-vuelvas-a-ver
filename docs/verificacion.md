@@ -22,11 +22,11 @@ Con **10.000 obras y 10.000 alias sintéticos**, cinco consultas de varias palab
 
 Advertencia de herramientas: el cliente de pruebas actual de Starlette avisa de la futura preferencia por httpx2. Las 59 pruebas pasan con el httpx fijado y usado también por el adaptador; no se afirma que no exista ningún aviso de dependencias.
 
-## Preparado y pendiente de ejecución remota
+## CI ejecutada y publicación pendiente
 
-- `checks.yml`: controles para pull requests y `main`, pruebas e imagen en runners nativos amd64 y arm64, sin publicación ni secretos. [Los nombres de runners se verificaron en documentación oficial](https://docs.github.com/en/actions/reference/runners/github-hosted-runners).
+- `checks.yml`: controles para pull requests y `main`, pruebas e imagen en runners nativos amd64 y arm64, sin publicación ni secretos. [Los nombres de runners se verificaron en documentación oficial](https://docs.github.com/en/actions/reference/runners/github-hosted-runners). La ejecución de Actions del commit `0645b363cc0a4398a6d430b01748b132131ca8f4` terminó correctamente en ambas arquitecturas: dependencias, tests, lint, lock, Compose, construcción y smoke/persistencia. El flujo de navegador también pasó en el runner amd64.
 - `publish.yml`: controles previos y publicación multiarch en GHCR únicamente al crear una etiqueta estable `vX.Y.Z`, usando GITHUB_TOKEN. No se ha creado ninguna etiqueta ni release.
-- La ejecución de Actions debe revisarse en GitHub tras la subida. La prueba local de imagen es amd64; **arm64 no se anuncia como validada localmente**.
+- La prueba local de imagen es amd64; arm64 se verificó en el runner nativo de Actions. Esto no equivale a una prueba en todos los modelos de NAS.
 - GHCR: primera publicación, cambio de visibilidad a pública, manifiesto y descarga anónima. No existe una imagen pública verificada por esta entrega.
 - No se ha desplegado en un NAS real, Dockhand ni Portainer. Sus instrucciones y variables se contrastaron con documentación oficial y el Compose real se validó con Docker Compose.
 - Autocompletado real de FilmAffinity: desactivado por defecto. Condiciones revisadas; robots no verificable en la consulta de documentación. Parser y respuestas HTTP probados con muestras/simulaciones, sin afirmar permiso ni compatibilidad permanente con el HTML real.
