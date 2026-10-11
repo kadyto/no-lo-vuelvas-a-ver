@@ -2,9 +2,9 @@
 
 Proyecto independiente, sin relación oficial con FilmAffinity. No se presupone una API oficial ni se requiere una API no oficial.
 
-Se revisaron las [condiciones públicas oficiales](https://www.filmaffinity.com/es/private.php) el 11 de octubre de 2026. No aportaron una autorización explícita para esta integración y no se pudo verificar [robots.txt](https://www.filmaffinity.com/robots.txt) mediante la herramienta de consulta disponible. Por eso `FILMAFFINITY_ENABLED=false` es el valor inicial. No afirmamos que robots permita el acceso, ni que la ausencia de una prohibición sea una autorización.
+`FILMAFFINITY_ENABLED=false` es el valor inicial. Ponlo en `true` para habilitar la consulta puntual de la ficha solicitada. El adaptador consulta directamente esa ficha y no solicita ni evalúa `robots.txt`. No hay clave, pago ni cuenta externa obligatoria.
 
-Antes de habilitar el adaptador, el administrador debe verificar las condiciones y, cuando corresponda, obtener permiso del proveedor. `FILMAFFINITY_ENABLED=true` expresa esa decisión de la instalación; no evita la comprobación de robots en tiempo de consulta. Si las condiciones cambian, vuelve a desactivarlo. No hay clave, pago ni cuenta externa obligatoria.
+Las [condiciones públicas oficiales](https://www.filmaffinity.com/es/private.php) se revisaron el 11 de octubre de 2026. La integración es independiente y no presupone una API ni una autorización oficial de FilmAffinity.
 
 ## Identidad offline
 
@@ -16,7 +16,7 @@ Se busca una ficha existente antes de llamar al proveedor y antes de guardar. Un
 
 El botón explícito inicia una consulta backend. El destino se construye a partir del ID validado; nunca se obtiene la URL arbitraria enviada por el navegador. No se siguen redirecciones. Se rechazan resoluciones a direcciones no públicas, errores y respuestas distintas de 200.
 
-Se comprueba robots con una caché de 24 horas; si no se puede obtener o impide la consulta, se pasa a manual. Los metadatos se cachean siete días en SQLite. Límite global: una consulta nueva cada 15 segundos y 30 por hora. Timeout de conexión de 4 segundos y de lectura de 8 segundos; límite descomprimido de 1,5 MB por ficha y 100 KB para robots. Los resultados cacheados pueden usarse sin otra consulta.
+Cada intento obtiene únicamente la URL canónica de la ficha, sin una petición previa a `robots.txt`. Los metadatos se cachean siete días en SQLite. Límite global: una consulta nueva cada 15 segundos y 30 por hora. Timeout de conexión de 4 segundos y de lectura de 8 segundos; límite descomprimido de 1,5 MB por ficha. Los resultados cacheados pueden usarse sin otra consulta.
 
 El parser intenta leer título español, título original, año, tipo y hasta doce géneros explícitos. Si no identifica el tipo, el usuario lo completa. No traduce títulos, no añade alias inventados y no promete obtener todas las versiones idiomáticas. V1 no extrae alias cuando no hay una fuente inequívoca. Los géneros son sugerencias; solo se asignan categorías elegidas por el usuario. La vista previa debe confirmarse para guardar. Se conserva proveedor, fecha de obtención y una instantánea mínima de metadatos; los campos editados pueden diferir de ella.
 
@@ -24,7 +24,7 @@ No se copian sinopsis, carteles, críticas, reseñas ajenas ni puntuaciones del 
 
 ## Diagnóstico de un bloqueo y captcha
 
-El aviso muestra el código HTTP y si la respuesta corresponde a `robots.txt` o a la ficha. Un **403** significa acceso rechazado; por sí solo no demuestra que exista un captcha. Se inspecciona como máximo un prefijo de 32 KiB de una respuesta 403 para detectar señales explícitas de comprobación humana, sin mostrar ni guardar el HTML recibido. Un **429** indica límite de consultas. Las redirecciones se indican y no se siguen. Si `robots.txt` impide el acceso o devuelve una página HTML de bloqueo, no se consulta la ficha.
+El aviso muestra el código HTTP de la consulta a la ficha. Un **403** significa acceso rechazado; por sí solo no demuestra que exista un captcha. Se inspecciona como máximo un prefijo de 32 KiB de una respuesta 403 para detectar señales explícitas de comprobación humana, sin mostrar ni guardar el HTML recibido. Un **429** indica límite de consultas. Las redirecciones se indican y no se siguen. Un fallo de `robots.txt` no afecta al autocompletado porque la aplicación no lo consulta.
 
 Cuando hay un fallo, el formulario conserva la URL canónica, su identidad y tus campos, y ofrece **Abrir ficha en FilmAffinity**. Puedes consultar los datos en esa pestaña y completarlos a mano.
 

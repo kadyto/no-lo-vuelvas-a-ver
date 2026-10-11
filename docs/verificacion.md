@@ -7,8 +7,8 @@ Comprobaciones ejecutadas el 11 de octubre de 2026 en un entorno Linux amd64 con
 | Comprobación | Comando | Resultado |
 | --- | --- | --- |
 | Dependencias fijadas | `uv sync --frozen` | Instalación correcta, lock completo y exportación con hashes |
-| Comportamiento y conservación | `uv run --frozen pytest -q` | **76 pruebas pasan**, 10,70 s en la última batería completa |
-| URL móvil y diagnóstico FilmAffinity | Incluidas en la batería anterior, con MockTransport | Identidad `m`/`www`/sin subdominio, duplicados y búsqueda; códigos HTTP, robots/ficha, captcha simulado, HTML rechazado y prefijo de diagnóstico limitado |
+| Comportamiento y conservación | `uv run --frozen pytest -q` | **74 pruebas pasan**, 11,21 s en la última batería completa |
+| URL móvil y diagnóstico FilmAffinity | Incluidas en la batería anterior, con MockTransport | Identidad `m`/`www`/sin subdominio, duplicados y búsqueda; consulta directa sin robots, códigos HTTP, captcha simulado y prefijo de diagnóstico limitado |
 | Calidad y formato | `uv run --frozen ruff check app migrations tests scripts`; `ruff format --check` | Correcto |
 | Lock de Docker | Exportación `uv export --frozen --no-dev --format requirements-txt --no-header` y comparación | Coincide con `requirements.lock` |
 | Imagen amd64 | `docker build -t no-lo-vuelvas-a-ver:test .` | Construcción correcta; en el entorno gestionado se añadió la CA del proxy como secreto efímero de BuildKit |
@@ -22,9 +22,9 @@ Comprobaciones ejecutadas el 11 de octubre de 2026 en un entorno Linux amd64 con
 
 La suite usa directorios temporales y obras sintéticas, no carga datos reales en el producto ni consulta FilmAffinity. Cubre notas nulas y decimales, rechazo de notas inválidas, URLs de distintos idiomas, altas simultáneas, homónimos, búsquedas por títulos/alias/tildes/ID/URL, categorías y borrado de asociaciones, independencia de Recomendable, importación/exportación y conflictos, copia/restauración, migraciones, acceso, CSRF, escape y destinos externos rechazados.
 
-Con **10.000 obras y 10.000 alias sintéticos**, cinco consultas de varias palabras y tildes en la segunda página midieron **12,1 ms mínimo, 14,3 ms mediana y 28,5 ms máximo**, con 24 fichas por página. Incluye recuento, consulta y carga de relaciones de esa página. Es una medición de este entorno, no una garantía para otro hardware. El navegador nunca descarga toda la base para buscar. La suite tiene un límite amplio de regresión de 5 s por consulta.
+Con **10.000 obras y 10.000 alias sintéticos**, cinco consultas de varias palabras y tildes en la segunda página midieron **13,5 ms mínimo, 15,2 ms mediana y 23,5 ms máximo**, con 24 fichas por página. Incluye recuento, consulta y carga de relaciones de esa página. Es una medición de este entorno, no una garantía para otro hardware. El navegador nunca descarga toda la base para buscar. La suite tiene un límite amplio de regresión de 5 s por consulta.
 
-Advertencia de herramientas: el cliente de pruebas actual de Starlette avisa de la futura preferencia por httpx2. Las 76 pruebas pasan con el httpx fijado y usado también por el adaptador; no se afirma que no exista ningún aviso de dependencias.
+Advertencia de herramientas: el cliente de pruebas actual de Starlette avisa de la futura preferencia por httpx2. Las 74 pruebas pasan con el httpx fijado y usado también por el adaptador; no se afirma que no exista ningún aviso de dependencias.
 
 ## CI ejecutada y publicación pendiente
 
@@ -34,7 +34,7 @@ Advertencia de herramientas: el cliente de pruebas actual de Starlette avisa de 
 - GHCR: primera publicación, cambio de visibilidad a pública, manifiesto y descarga anónima. No existe una imagen pública verificada por esta entrega.
 - Las comprobaciones de este informe no incluyen una instalación en un NAS real, Dockhand ni Portainer. Sus instrucciones y variables se contrastaron con documentación oficial y el Compose real se validó con Docker Compose.
 - La alternativa de Dockhand se probó con un tar de carpeta anidada y también descargando el archivo público real de `main` tras subir el commit `bf28aa5d23d298645787d87ce951d18b58be96c0`. Se construyó la imagen y pasó el smoke de persistencia. No requiere Git ni una imagen GHCR; requiere Internet durante la construcción. La ejecución dentro del administrador sigue pendiente de una instalación real.
-- Autocompletado real de FilmAffinity: desactivado por defecto. Condiciones revisadas; robots no verificable en la consulta de documentación. Parser y respuestas HTTP probados con muestras/simulaciones, sin afirmar permiso ni compatibilidad permanente con el HTML real.
+- Autocompletado real de FilmAffinity: desactivado por defecto y consulta directa a la ficha cuando se habilita, sin peticiones a robots. Parser y respuestas HTTP probados con muestras/simulaciones, sin afirmar permiso ni compatibilidad permanente con el HTML real.
 
 ## Repetir la revisión visual
 

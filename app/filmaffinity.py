@@ -1,10 +1,8 @@
 """Adaptador opcional: solo metadatos mínimos, nunca catálogo ni contenidos editoriales."""
 
-import fnmatch
 import ipaddress
 import re
 import socket
-import time
 from urllib.parse import urlsplit
 
 import httpx
@@ -106,44 +104,14 @@ def parse_metadata(html):
     }
 
 
-def robots_allowed(text, path):
-    # Honor * and $ conservatively, longest matching Allow/Disallow; specific agent overrides *.
-    groups, agents, rules = [], [], []
-    for line in text.splitlines() + ["User-agent: end-sentinel"]:
-        line = line.split("#", 1)[0].strip()
-        if ":" not in line:
-            continue
-        name, value = [x.strip() for x in line.split(":", 1)]
-        name = name.lower()
-        if name == "user-agent":
-            if rules:
-                groups.append((agents, rules))
-                agents, rules = [], []
-            agents.append(value.lower())
-        elif name in {"allow", "disallow"} and agents and value:
-            rules.append((name, value))
-    specific = [r for a, r in groups if any(x != "*" and x in USER_AGENT.lower() for x in a)]
-    chosen = specific or [r for a, r in groups if "*" in a]
-    matches = []
-    for group in chosen:
-        for name, pattern in group:
-            anchored = pattern.endswith("$")
-            pattern = pattern.rstrip("$")
-            if fnmatch.fnmatchcase(path, pattern + ("" if anchored else "*")):
-                matches.append((len(pattern.replace("*", "")), name == "allow"))
-    return max(matches, default=(0, True))[1]
-
-
 class FilmAffinityAdapter:
     def __init__(self, enabled=False, transport=None, resolver=socket.getaddrinfo):
         self.enabled, self.transport, self.resolver = enabled, transport, resolver
-        self._robots = None
 
     def _read(self, client, url, limit=MAX_BYTES):
         with client.stream("GET", url) as response:
-            resource = "robots.txt" if urlsplit(url).path == "/robots.txt" else "la ficha"
             if response.status_code != 200:
-                detail = f"HTTP {response.status_code} al consultar {resource}"
+                detail = f"HTTP {response.status_code} al consultar la ficha"
                 if response.status_code == 403:
                     # Inspect only a bounded prefix; never expose, persist or execute the remote HTML.
                     chunks, size, sample_limit = [], 0, min(limit, 32_768)
@@ -181,28 +149,13 @@ class FilmAffinityAdapter:
                 if size > limit:
                     raise MetadataUnavailable("La respuesta es demasiado grande. Completa los datos a mano.")
                 chunks.append(chunk)
-            body = b"".join(chunks).decode("utf-8", errors="replace")
-            if resource == "robots.txt" and (
-                "text/html" in response.headers.get("content-type", "").lower()
-                or re.search(r"<(?:!doctype\s+html|html|body|head|form|div|script)\b", body, re.I)
-            ):
-                if human_check_required(BeautifulSoup(body, "html.parser")):
-                    raise MetadataUnavailable(
-                        "FilmAffinity pide un captcha o una comprobación humana al consultar robots.txt (HTTP 200). "
-                        "Resolverla en tu navegador no habilita necesariamente la consulta del servidor. "
-                        "Completa los datos a mano."
-                    )
-                raise MetadataUnavailable(
-                    "FilmAffinity devolvió HTML en lugar de reglas de acceso (robots.txt, HTTP 200). "
-                    "No se ha consultado la ficha. Completa los datos a mano."
-                )
-            return body
+            return b"".join(chunks).decode("utf-8", errors="replace")
 
     def fetch(self, fa_id):
         url = canonical_url(fa_id)
         if not self.enabled:
             raise MetadataUnavailable(
-                "Autocompletado desactivado: no se ha verificado el permiso de acceso automatizado. La URL y el ID se conservan; completa los datos a mano."
+                "Autocompletado desactivado en esta instalación. La URL y el ID se conservan; completa los datos a mano."
             )
         try:
             addresses = self.resolver("www.filmaffinity.com", 443, type=socket.SOCK_STREAM)
@@ -214,14 +167,6 @@ class FilmAffinityAdapter:
                 headers={"User-Agent": USER_AGENT},
                 transport=self.transport,
             ) as client:
-                if self._robots is None or self._robots[0] < time.time():
-                    robots = self._read(client, "https://www.filmaffinity.com/robots.txt", 100_000)
-                    self._robots = (time.time() + 86400, robots)
-                if not robots_allowed(self._robots[1], urlsplit(url).path):
-                    raise MetadataUnavailable(
-                        "Las reglas de acceso de FilmAffinity (robots.txt) no permiten consultar esta ficha. "
-                        "No es un captcha que puedas resolver. Completa los datos a mano."
-                    )
                 return parse_metadata(self._read(client, url))
         except (httpx.HTTPError, OSError):
             raise MetadataUnavailable(

@@ -11,7 +11,6 @@ from app.filmaffinity import (
     canonical_url,
     parse_metadata,
     parse_url,
-    robots_allowed,
 )
 from app.models import BrowserSession
 from app.schemas import WorkData
@@ -79,11 +78,7 @@ def test_simulated_http_refusals(status):
 
     def handler(request):
         calls.append(str(request.url))
-        return (
-            httpx.Response(200, text="User-agent: *\nAllow: /")
-            if request.url.path == "/robots.txt"
-            else httpx.Response(status, headers={"Location": "https://evil.test/"})
-        )
+        return httpx.Response(status, headers={"Location": "https://evil.test/"})
 
     adapter = FilmAffinityAdapter(True, httpx.MockTransport(handler), resolver)
     with pytest.raises(MetadataUnavailable) as exc:
@@ -91,38 +86,33 @@ def test_simulated_http_refusals(status):
     assert f"HTTP {status}" in str(exc.value) and "la ficha" in str(exc.value)
     if status == 403:
         assert "no permite confirmar si exige un captcha" in str(exc.value)
-    assert len(calls) == 2 and not any("evil" in x for x in calls)
+    assert calls == ["https://www.filmaffinity.com/es/film123.html"]
 
 
 @pytest.mark.parametrize(
-    "resource,status,body,expected",
+    "status,body,expected",
     [
-        ("/robots.txt", 403, "Forbidden", "no permite confirmar si exige un captcha"),
-        ("/robots.txt", 429, "Slow down", "limita las consultas"),
-        ("/robots.txt", 200, '<html><div class="h-captcha"></div></html>', "comprobación humana"),
-        ("/robots.txt", 200, "<html>Acceso denegado</html>", "HTML en lugar de reglas"),
-        ("/es/film123.html", 403, '<div class="g-recaptcha"></div>', "comprobación humana"),
-        ("/es/film123.html", 200, '<form id="challenge-form">Just a moment</form>', "comprobación humana"),
+        (403, "Forbidden", "no permite confirmar si exige un captcha"),
+        (429, "Slow down", "limita las consultas"),
+        (403, '<div class="g-recaptcha"></div>', "comprobación humana"),
+        (200, '<form id="challenge-form">Just a moment</form>', "comprobación humana"),
     ],
 )
-def test_diagnostic_distinguishes_resource_and_human_check(resource, status, body, expected):
+def test_diagnostic_distinguishes_refusal_and_human_check(status, body, expected):
     calls = []
 
     def handler(request):
         calls.append(str(request.url))
-        if request.url.path == resource:
-            return httpx.Response(status, text=body)
-        return httpx.Response(200, text="User-agent: *\nAllow: /")
+        return httpx.Response(status, text=body)
 
     adapter = FilmAffinityAdapter(True, httpx.MockTransport(handler), resolver)
     with pytest.raises(MetadataUnavailable) as exc:
         adapter.fetch("123")
     message = str(exc.value)
     assert f"HTTP {status}" in message and expected in message
-    assert ("robots.txt" if resource == "/robots.txt" else "la ficha") in message
+    assert "la ficha" in message
     assert "Completa los datos a mano" in message
-    assert len(calls) == (1 if resource == "/robots.txt" else 2)
-    assert all(url.startswith("https://www.filmaffinity.com/") for url in calls)
+    assert calls == ["https://www.filmaffinity.com/es/film123.html"]
     assert body not in message
 
 
@@ -141,39 +131,35 @@ def test_403_diagnostic_reads_bounded_prefix():
         return httpx.Response(403, stream=stream)
 
     adapter = FilmAffinityAdapter(True, httpx.MockTransport(handler), resolver)
-    with pytest.raises(MetadataUnavailable, match="HTTP 403 al consultar robots.txt"):
+    with pytest.raises(MetadataUnavailable, match="HTTP 403 al consultar la ficha"):
         adapter.fetch("123")
     assert stream.consumed == 32_768
 
 
-def test_robots_captcha_path_is_a_rule_not_a_challenge():
+def test_direct_fetch_does_not_consult_robots():
+    calls = []
+
     def handler(request):
-        return httpx.Response(
-            200,
-            text="User-agent: *\nDisallow: /captcha\nAllow: /es/"
-            if request.url.path == "/robots.txt"
-            else HTML,
-        )
+        calls.append(str(request.url))
+        if request.url.path == "/robots.txt":
+            return httpx.Response(403)
+        return httpx.Response(200, text=HTML)
 
     adapter = FilmAffinityAdapter(True, httpx.MockTransport(handler), resolver)
     assert adapter.fetch("123")["title"] == "El faro de prueba"
+    assert calls == ["https://www.filmaffinity.com/es/film123.html"]
 
 
-def test_adapter_limits_robots_offline_and_private():
-    assert not robots_allowed("User-agent: *\nDisallow: /es/film*", "/es/film1.html")
-    assert robots_allowed("User-agent: *\nDisallow: /\nAllow: /es/film1.html$", "/es/film1.html")
+def test_adapter_limits_offline_and_private():
     requests = []
 
     def handler(request):
         requests.append(request.url.path)
-        return httpx.Response(
-            200, text="User-agent: *\nDisallow: /" if request.url.path == "/robots.txt" else HTML
-        )
+        return httpx.Response(200, text=HTML)
 
     adapter = FilmAffinityAdapter(True, httpx.MockTransport(handler), resolver)
-    with pytest.raises(MetadataUnavailable, match=r"robots.txt.*no permiten"):
-        adapter.fetch("123")
-    assert requests == ["/robots.txt"]
+    assert adapter.fetch("123")["title"] == "El faro de prueba"
+    assert requests == ["/es/film123.html"]
     with pytest.raises(MetadataUnavailable):
         FilmAffinityAdapter().fetch("123")
 
@@ -190,9 +176,7 @@ def test_adapter_limits_robots_offline_and_private():
         FilmAffinityAdapter(True, httpx.MockTransport(offline), resolver).fetch("123")
 
     def oversized(request):
-        return httpx.Response(
-            200, text="User-agent: *\nAllow: /" if request.url.path == "/robots.txt" else "X" * 1_500_001
-        )
+        return httpx.Response(200, text="X" * 1_500_001)
 
     with pytest.raises(MetadataUnavailable):
         FilmAffinityAdapter(True, httpx.MockTransport(oversized), resolver).fetch("123")
