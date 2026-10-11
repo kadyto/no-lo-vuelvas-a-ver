@@ -2,6 +2,7 @@
 
 ## Sin publicar — preparación de V1 (0.1.0)
 
+- El adaptador FilmAffinity usa ahora Requests Session, como changedetection.io, con sus cabeceras predeterminadas y cookies efímeras; conserva el dominio móvil de la consulta, la identidad canónica y la verificación TLS. Diagnóstico de retos sin atribuirlos a la falta de JavaScript y sin falsos positivos por títulos que contengan «captcha».
 - Compatibilidad HTTP de FilmAffinity tras revisar changedetection.io: User-Agent de su cliente básico, aceptación de HTML e idioma español, hasta tres redirecciones HTTPS validadas de la misma ficha y diagnóstico de `cf-mitigated: challenge`. Sin navegador adicional ni reintentos de bloqueos.
 - Consulta puntual directa de FilmAffinity: se elimina la petición y evaluación de `robots.txt`; se mantienen caché, límites y diagnóstico de errores de la ficha.
 - URLs móviles `m.filmaffinity.com` con la misma identidad canónica; diagnóstico de bloqueos por código HTTP, recurso y señales de comprobación humana, con enlace para completar a mano.

@@ -5,7 +5,7 @@ import re
 import socket
 from urllib.parse import urljoin, urlsplit
 
-import httpx
+import requests
 from bs4 import BeautifulSoup
 
 HOSTS = {"www.filmaffinity.com", "m.filmaffinity.com", "filmaffinity.com"}
@@ -14,11 +14,7 @@ HOSTS = {"www.filmaffinity.com", "m.filmaffinity.com", "filmaffinity.com"}
 USER_AGENT = (
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/87.0.4280.66 Safari/537.36"
 )
-REQUEST_HEADERS = {
-    "User-Agent": USER_AGENT,
-    "Accept": "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8",
-    "Accept-Language": "es-ES,es;q=0.9",
-}
+REQUEST_HEADERS = {"User-Agent": USER_AGENT}
 MAX_BYTES = 1_500_000
 MAX_REDIRECTS = 3
 
@@ -56,11 +52,22 @@ def canonical_url(fa_id):
     return f"https://www.filmaffinity.com/es/film{fa_id}.html"
 
 
+def lookup_url(fa_id, source_url=None):
+    """Keep reference identity canonical, but query the explicitly requested public host."""
+    canonical = canonical_url(fa_id)
+    if source_url is None:
+        return canonical
+    if parse_url(source_url) != str(fa_id):
+        raise ValueError("La URL de consulta debe corresponder al mismo ID de FilmAffinity.")
+    parts = urlsplit(source_url)
+    return f"https://{parts.hostname}/es/film{fa_id}.html"
+
+
 def human_check_required(soup):
     return bool(
         soup.select(".g-recaptcha, .h-captcha, .cf-turnstile, #captcha, #challenge-form")
         or re.search(
-            r"captcha|just a moment|verify you are human|verifica que eres humano",
+            r"just a moment|verify you are human|verifica que eres humano",
             soup.get_text(),
             re.I,
         )
@@ -114,6 +121,13 @@ def parse_metadata(html):
     }
 
 
+class MetadataSession(requests.Session):
+    def resolve_redirects(self, *args, **kwargs):
+        # Requests otherwise drains redirect bodies to prepare response.next, even with
+        # allow_redirects=False. Our adapter validates and follows each hop itself.
+        return iter(())
+
+
 class FilmAffinityAdapter:
     def __init__(self, enabled=False, transport=None, resolver=socket.getaddrinfo):
         self.enabled, self.transport, self.resolver = enabled, transport, resolver
@@ -125,7 +139,7 @@ class FilmAffinityAdapter:
 
     def _read(self, client, url, limit=MAX_BYTES, redirects=0):
         self._validate_public_host(url)
-        with client.stream("GET", url) as response:
+        with client.get(url, stream=True, allow_redirects=False, timeout=(4, 8)) as response:
             if response.status_code in {301, 302, 303, 307, 308}:
                 location = response.headers.get("Location", "")
                 destination = urljoin(url, location)
@@ -150,11 +164,14 @@ class FilmAffinityAdapter:
                 return self._read(client, destination, limit, redirects + 1)
             challenge = response.headers.get("cf-mitigated") == "challenge"
             if response.status_code != 200 or challenge:
-                detail = f"HTTP {response.status_code} al consultar la ficha"
+                detail = (
+                    f"HTTP {response.status_code} al consultar la ficha; "
+                    f"cliente Requests, dominio {urlsplit(url).hostname}"
+                )
                 if response.status_code == 403 or challenge:
                     # Inspect only a bounded prefix; never expose, persist or execute the remote HTML.
                     chunks, size, sample_limit = [], 0, min(limit, 32_768)
-                    for chunk in response.iter_bytes(chunk_size=8192):
+                    for chunk in response.iter_content(chunk_size=8192):
                         part = chunk[: sample_limit - size]
                         chunks.append(part)
                         size += len(part)
@@ -164,8 +181,8 @@ class FilmAffinityAdapter:
                     if human_check_required(soup) or challenge:
                         message = (
                             f"FilmAffinity pide un captcha o una comprobación humana ({detail}). "
-                            "El cliente HTTP no ejecuta JavaScript. Resolverla en tu navegador no habilita "
-                            "necesariamente la consulta del servidor"
+                            "La respuesta contiene señales de un reto de acceso; no identifica la causa del "
+                            "bloqueo. Resolverlo en tu navegador no habilita necesariamente la consulta del servidor"
                         )
                     else:
                         message = (
@@ -184,28 +201,26 @@ class FilmAffinityAdapter:
                     message = f"FilmAffinity no permite obtener los datos ({detail})"
                 raise MetadataUnavailable(message + ". Completa los datos a mano.")
             size, chunks = 0, []
-            for chunk in response.iter_bytes():
+            for chunk in response.iter_content(chunk_size=8192):
                 size += len(chunk)
                 if size > limit:
                     raise MetadataUnavailable("La respuesta es demasiado grande. Completa los datos a mano.")
                 chunks.append(chunk)
             return b"".join(chunks).decode("utf-8", errors="replace")
 
-    def fetch(self, fa_id):
-        url = canonical_url(fa_id)
+    def fetch(self, fa_id, source_url=None):
+        url = lookup_url(fa_id, source_url)
         if not self.enabled:
             raise MetadataUnavailable(
                 "Autocompletado desactivado en esta instalación. La URL y el ID se conservan; completa los datos a mano."
             )
         try:
-            with httpx.Client(
-                timeout=httpx.Timeout(8, connect=4),
-                follow_redirects=False,
-                headers=REQUEST_HEADERS,
-                transport=self.transport,
-            ) as client:
+            with MetadataSession() as client:
+                client.headers.update(REQUEST_HEADERS)
+                if self.transport is not None:
+                    client.mount("https://", self.transport)
                 return parse_metadata(self._read(client, url))
-        except (httpx.HTTPError, OSError):
+        except (requests.RequestException, OSError):
             raise MetadataUnavailable(
                 "No se ha podido conectar con FilmAffinity. Completa los datos a mano."
             ) from None

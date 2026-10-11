@@ -6,7 +6,7 @@
 - Modelos en `app/models.py`, negocio/búsqueda en `app/library.py`, adaptador externo en `app/filmaffinity.py`, transferencias en `app/transfers.py`.
 - No usar `create_all` en el arranque ni borrar tablas para migrar. Añadir revisiones Alembic congeladas y probar conservación y copia previa.
 - Mantener UNIQUE para FilmAffinity, notas nullable y separadas de Recomendable. Nunca borrar valoraciones al importar metadatos.
-- Sin red real a FilmAffinity en pruebas: usar HTML sintético y MockTransport.
+- Sin red real a FilmAffinity en pruebas: usar HTML sintético y `tests/requests_transport.py`, que intercepta el transporte de una sesión Requests real.
 - Verificar: `uv sync --frozen`, `uv run --frozen ruff check app migrations tests scripts`, `uv run --frozen pytest -q`.
 - Con Docker: validar Compose con `scripts/check_compose.py`, construir y ejecutar `tests/smoke_image.py`; navegador con `tests/browser_smoke.py`.
 - Para Dockhand sin terminal: validar `scripts/check_compose.py compose.dockhand.yaml` y ejecutar `tests/smoke_archive.py`; mantener coherentes raíz del tar, ruta Dockerfile y SOURCE_DIR. `compose.yaml` sigue siendo instalación por imagen.

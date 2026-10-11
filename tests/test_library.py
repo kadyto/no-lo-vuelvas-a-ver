@@ -153,7 +153,8 @@ def test_manual_failure_duplicate_before_fetch(client, application):
     class FailingAdapter:
         calls = 0
 
-        def fetch(self, fa_id):
+        def fetch(self, fa_id, source_url=None):
+            assert source_url == "https://m.filmaffinity.com/es/film111.html"
             self.calls += 1
             from app.filmaffinity import MetadataUnavailable
 
@@ -183,6 +184,50 @@ def test_manual_failure_duplicate_before_fetch(client, application):
     )
     assert response.status_code == 409 and "Ya está en tu biblioteca" in response.text
     assert adapter.calls == 1
+
+
+def test_requests_preview_mobile_host_cache_and_canonical_save(client, application, db):
+    import httpx
+
+    from app.filmaffinity import FilmAffinityAdapter
+    from tests.requests_transport import RequestsTransport
+    from tests.test_security_metadata import HTML, resolver
+
+    calls = []
+
+    def handler(request):
+        calls.append(str(request.url))
+        return httpx.Response(200, text=HTML)
+
+    application.state.adapter = FilmAffinityAdapter(True, RequestsTransport(handler), resolver)
+    token = csrf(client.get("/works/new"))
+    response = client.post(
+        "/metadata",
+        data={"csrf": token, "fa_url": "https://m.filmaffinity.com/en/film000123.html?shared=1"},
+    )
+    assert response.status_code == 200 and "Datos obtenidos de FilmAffinity" in response.text
+    assert calls == ["https://m.filmaffinity.com/es/film123.html"]
+    assert db.scalar(select(Work)) is None
+    response = client.post(
+        "/metadata", data={"csrf": token, "fa_url": "https://www.filmaffinity.com/es/film123.html"}
+    )
+    assert response.status_code == 200 and len(calls) == 1
+    response = client.post(
+        "/works",
+        data={
+            "csrf": token,
+            "fa_url": "https://m.filmaffinity.com/es/film123.html",
+            "title": "El faro de prueba",
+            "kind": "movie",
+            "metadata_confirm": "on",
+            "score": "8.5",
+            "notes": "Una opinión sintética",
+        },
+    )
+    assert response.status_code == 200 and "Ficha guardada" in response.text
+    work = db.scalar(select(Work))
+    assert work.fa_id == "123" and work.fa_url == "https://www.filmaffinity.com/es/film123.html"
+    assert work.metadata_source == "FilmAffinity" and work.review.notes == "Una opinión sintética"
 
 
 def test_http_edit_delete_recommend_and_similarity(client, db):

@@ -2,7 +2,13 @@
 
 Comprobaciones ejecutadas el 11 de octubre de 2026 en un entorno Linux amd64 con Python 3.12.14, Docker Engine y Compose v2. No representan una prueba en un NAS concreto ni una publicación en GHCR.
 
-## Corrección de compatibilidad HTTP
+## Revisión del cliente Requests
+
+El adaptador usa Requests Session y mantiene el dominio solicitado. Las pruebas normales usan un transporte Requests sintético y nunca consultan FilmAffinity. La batería aislada del adaptador pasó **56 pruebas en 0,46 s**, incluyendo cabeceras predeterminadas, dominio móvil, identidad canónica, rechazo de destinos/IDs incorrectos, cookies de redirección, cuerpos de redirección sin descargar y diagnóstico sin atribuir el bloqueo a JavaScript. La batería completa y las imágenes de esta revisión se verifican mediante el workflow Controles.
+
+En una comprobación manual puntual desde el entorno de desarrollo, HTTPX y Requests obtuvieron HTTP 200 y HTML de ficha en la URL española de `www`; Requests recibió HTTP 302 de `m` hacia esa misma ficha de `www`. Se mantuvo la verificación TLS, no se guardó el HTML remoto ni se cargó ninguna obra real en la biblioteca. Esta comprobación no reproduce el 403 de otro equipo ni demuestra su causa. No forma parte de la suite automática ni garantiza disponibilidad futura.
+
+## Corrección anterior de compatibilidad HTTP
 
 Tras comparar el código de changedetection.io, se ejecutó `pytest -q tests/test_security_metadata.py -k 'not auth_csrf_escape_cookie and not login_limits_logout_change_password and not password_change'`: **48 pruebas pasan en 0,86 s**, usando exclusivamente HTML sintético y MockTransport. Cubren cabeceras, redirecciones de la misma ficha, rechazo de otros destinos/IDs/puertos/credenciales, resolución privada en una redirección, bucles limitados, bloqueo sin reintentos y comprobación humana indicada por cabecera. `ruff check`, `ruff format --check` y `git diff --check` pasan.
 

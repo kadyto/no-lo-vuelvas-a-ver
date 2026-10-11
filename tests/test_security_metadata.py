@@ -2,6 +2,7 @@ import time
 
 import httpx
 import pytest
+import requests
 from fastapi.testclient import TestClient
 
 from app import auth, library
@@ -10,12 +11,14 @@ from app.filmaffinity import (
     MetadataUnavailable,
     REQUEST_HEADERS,
     canonical_url,
+    lookup_url,
     parse_metadata,
     parse_url,
 )
 from app.models import BrowserSession
 from app.schemas import WorkData
 from tests.conftest import PASSWORD, csrf
+from tests.requests_transport import RequestsTransport
 
 HTML = """<main itemscope itemtype="https://schema.org/Movie"><h1 id="main-title"><span>El faro de prueba</span></h1><dl><dt>Título original</dt><dd>Synthetic Lighthouse</dd><dt>Año</dt><dd>2024</dd><dt>Género</dt><dd><a href="/es/moviegenre.php?genre=DR">Drama</a><a href="/es/movietopic.php?topic=1">Tema</a></dd></dl></main>"""
 
@@ -52,6 +55,43 @@ def test_mobile_url_canonical_identity(host):
     )
 
 
+@pytest.mark.parametrize("host", ["m.filmaffinity.com", "www.filmaffinity.com", "filmaffinity.com"])
+def test_lookup_preserves_requested_host_with_canonical_identity(host):
+    source = f"http://{host}/en/film000123.html?from=mobile#details"
+    assert lookup_url("123", source) == f"https://{host}/es/film123.html"
+    calls = []
+
+    def handler(request):
+        calls.append(str(request.url))
+        return httpx.Response(200, text=HTML)
+
+    adapter = FilmAffinityAdapter(True, RequestsTransport(handler), resolver)
+    assert adapter.fetch("123", source_url=source)["year"] == 2024
+    assert calls == [f"https://{host}/es/film123.html"]
+    assert canonical_url("123") == "https://www.filmaffinity.com/es/film123.html"
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "https://evil.test/es/film123.html",
+        "https://www.filmaffinity.com/es/film999.html",
+        "https://user:password@m.filmaffinity.com/es/film123.html",
+        "https://m.filmaffinity.com:443/es/film123.html",
+    ],
+)
+def test_lookup_rejects_untrusted_source_before_network(source):
+    calls = []
+
+    def handler(request):
+        calls.append(request)
+        return httpx.Response(200, text=HTML)
+
+    with pytest.raises(ValueError):
+        FilmAffinityAdapter(True, RequestsTransport(handler), resolver).fetch("123", source_url=source)
+    assert calls == []
+
+
 def test_parser_synthetic():
     data = parse_metadata(HTML)
     assert data == {
@@ -67,6 +107,9 @@ def test_parser_synthetic():
         parse_metadata("<html>captcha</html>")
     with pytest.raises(MetadataUnavailable):
         parse_metadata("<html>nuevo formato</html>")
+    assert parse_metadata(HTML.replace("El faro de prueba", "Captcha: una obra ficticia"))["title"] == (
+        "Captcha: una obra ficticia"
+    )
 
 
 def resolver(*args, **kwargs):
@@ -78,11 +121,12 @@ def test_http_browser_compatibility_headers():
         for key, value in REQUEST_HEADERS.items():
             assert request.headers[key] == value
         assert request.headers["User-Agent"].startswith("Mozilla/5.0")
-        assert "text/html" in request.headers["Accept"]
-        assert request.headers["Accept-Language"].startswith("es")
+        assert request.headers["Accept"] == "*/*"
+        assert request.headers["Connection"] == "keep-alive"
+        assert "Accept-Language" not in request.headers
         return httpx.Response(200, text=HTML)
 
-    adapter = FilmAffinityAdapter(True, httpx.MockTransport(handler), resolver)
+    adapter = FilmAffinityAdapter(True, RequestsTransport(handler), resolver)
     assert adapter.fetch("123")["year"] == 2024
 
 
@@ -102,7 +146,7 @@ def test_same_work_redirects_are_followed_with_validation(status):
             return httpx.Response(status, headers={"Location": "film123.html?view=mobile"})
         return httpx.Response(200, text=HTML)
 
-    adapter = FilmAffinityAdapter(True, httpx.MockTransport(handler), resolve)
+    adapter = FilmAffinityAdapter(True, RequestsTransport(handler), resolve)
     assert adapter.fetch("123")["title"] == "El faro de prueba"
     assert calls == [
         "https://www.filmaffinity.com/es/film123.html",
@@ -132,7 +176,7 @@ def test_unsafe_or_different_work_redirects_not_fetched(location):
         calls.append(str(request.url))
         return httpx.Response(302, headers={"Location": location})
 
-    adapter = FilmAffinityAdapter(True, httpx.MockTransport(handler), resolver)
+    adapter = FilmAffinityAdapter(True, RequestsTransport(handler), resolver)
     with pytest.raises(MetadataUnavailable, match="redirección no permitida"):
         adapter.fetch("123")
     assert calls == [canonical_url("123")]
@@ -149,7 +193,7 @@ def test_redirect_destination_private_dns_not_fetched():
         calls.append(str(request.url))
         return httpx.Response(302, headers={"Location": "https://m.filmaffinity.com/es/film123.html"})
 
-    adapter = FilmAffinityAdapter(True, httpx.MockTransport(handler), resolve)
+    adapter = FilmAffinityAdapter(True, RequestsTransport(handler), resolve)
     with pytest.raises(MetadataUnavailable, match="dirección pública"):
         adapter.fetch("123")
     assert calls == [canonical_url("123")]
@@ -163,10 +207,38 @@ def test_redirect_loop_is_bounded():
         calls.append(str(request.url))
         return httpx.Response(302, headers={"Location": "/es/film123.html"})
 
-    adapter = FilmAffinityAdapter(True, httpx.MockTransport(handler), resolver)
+    adapter = FilmAffinityAdapter(True, RequestsTransport(handler), resolver)
     with pytest.raises(MetadataUnavailable, match="demasiadas redirecciones"):
         adapter.fetch("123")
     assert len(calls) == 4
+
+
+def test_requests_redirect_preserves_session_without_reading_redirect_body():
+    class LargeRedirectResponse(httpx.SyncByteStream):
+        consumed = 0
+
+        def __iter__(self):
+            for _ in range(100):
+                self.consumed += 8192
+                yield b"X" * 8192
+
+    stream, calls = LargeRedirectResponse(), []
+
+    def handler(request):
+        calls.append(str(request.url))
+        if len(calls) == 1:
+            return httpx.Response(
+                302,
+                headers={"Location": "/es/film123.html?view=1", "Set-Cookie": "language=es; Path=/; Secure"},
+                stream=stream,
+            )
+        assert request.headers["Cookie"] == "language=es"
+        return httpx.Response(200, text=HTML)
+
+    adapter = FilmAffinityAdapter(True, RequestsTransport(handler), resolver)
+    assert adapter.fetch("123")["year"] == 2024
+    assert stream.consumed == 0
+    assert len(calls) == 2
 
 
 @pytest.mark.parametrize("status", [200, 403])
@@ -177,11 +249,12 @@ def test_challenge_header_detected_without_retries(status):
         calls.append(str(request.url))
         return httpx.Response(status, headers={"cf-mitigated": "challenge"}, text="Challenge")
 
-    adapter = FilmAffinityAdapter(True, httpx.MockTransport(handler), resolver)
+    adapter = FilmAffinityAdapter(True, RequestsTransport(handler), resolver)
     with pytest.raises(MetadataUnavailable, match="comprobación humana") as exc:
         adapter.fetch("123")
     assert f"HTTP {status}" in str(exc.value)
-    assert "no ejecuta JavaScript" in str(exc.value)
+    assert "no identifica la causa" in str(exc.value)
+    assert "cliente Requests, dominio www.filmaffinity.com" in str(exc.value)
     assert calls == [canonical_url("123")]
 
 
@@ -193,7 +266,7 @@ def test_simulated_http_refusals(status):
         calls.append(str(request.url))
         return httpx.Response(status, headers={"Location": "https://evil.test/"})
 
-    adapter = FilmAffinityAdapter(True, httpx.MockTransport(handler), resolver)
+    adapter = FilmAffinityAdapter(True, RequestsTransport(handler), resolver)
     with pytest.raises(MetadataUnavailable) as exc:
         adapter.fetch("123")
     assert f"HTTP {status}" in str(exc.value) and "la ficha" in str(exc.value)
@@ -218,7 +291,7 @@ def test_diagnostic_distinguishes_refusal_and_human_check(status, body, expected
         calls.append(str(request.url))
         return httpx.Response(status, text=body)
 
-    adapter = FilmAffinityAdapter(True, httpx.MockTransport(handler), resolver)
+    adapter = FilmAffinityAdapter(True, RequestsTransport(handler), resolver)
     with pytest.raises(MetadataUnavailable) as exc:
         adapter.fetch("123")
     message = str(exc.value)
@@ -243,7 +316,7 @@ def test_403_diagnostic_reads_bounded_prefix():
     def handler(request):
         return httpx.Response(403, stream=stream)
 
-    adapter = FilmAffinityAdapter(True, httpx.MockTransport(handler), resolver)
+    adapter = FilmAffinityAdapter(True, RequestsTransport(handler), resolver)
     with pytest.raises(MetadataUnavailable, match="HTTP 403 al consultar la ficha"):
         adapter.fetch("123")
     assert stream.consumed == 32_768
@@ -258,21 +331,21 @@ def test_direct_fetch_does_not_consult_robots():
             return httpx.Response(403)
         return httpx.Response(200, text=HTML)
 
-    adapter = FilmAffinityAdapter(True, httpx.MockTransport(handler), resolver)
+    adapter = FilmAffinityAdapter(True, RequestsTransport(handler), resolver)
     assert adapter.fetch("123")["title"] == "El faro de prueba"
     assert calls == ["https://www.filmaffinity.com/es/film123.html"]
 
 
 def test_adapter_limits_offline_and_private():
-    requests = []
+    calls = []
 
     def handler(request):
-        requests.append(request.url.path)
+        calls.append(request.url.path)
         return httpx.Response(200, text=HTML)
 
-    adapter = FilmAffinityAdapter(True, httpx.MockTransport(handler), resolver)
+    adapter = FilmAffinityAdapter(True, RequestsTransport(handler), resolver)
     assert adapter.fetch("123")["title"] == "El faro de prueba"
-    assert requests == ["/es/film123.html"]
+    assert calls == ["/es/film123.html"]
     with pytest.raises(MetadataUnavailable):
         FilmAffinityAdapter().fetch("123")
 
@@ -280,19 +353,19 @@ def test_adapter_limits_offline_and_private():
         return [(2, 1, 6, "", ("127.0.0.1", 443))]
 
     with pytest.raises(MetadataUnavailable):
-        FilmAffinityAdapter(True, httpx.MockTransport(handler), private).fetch("123")
+        FilmAffinityAdapter(True, RequestsTransport(handler), private).fetch("123")
 
     def offline(request):
-        raise httpx.ConnectError("offline")
+        raise requests.ConnectionError("offline")
 
     with pytest.raises(MetadataUnavailable):
-        FilmAffinityAdapter(True, httpx.MockTransport(offline), resolver).fetch("123")
+        FilmAffinityAdapter(True, RequestsTransport(offline), resolver).fetch("123")
 
     def oversized(request):
         return httpx.Response(200, text="X" * 1_500_001)
 
     with pytest.raises(MetadataUnavailable):
-        FilmAffinityAdapter(True, httpx.MockTransport(oversized), resolver).fetch("123")
+        FilmAffinityAdapter(True, RequestsTransport(oversized), resolver).fetch("123")
 
 
 def test_auth_csrf_escape_cookie(client, db):

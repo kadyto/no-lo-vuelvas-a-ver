@@ -19,7 +19,7 @@ from starlette.concurrency import run_in_threadpool
 from app import auth, library, transfers
 from app.config import Settings
 from app.db import make_engine, migrate, now, sessions
-from app.filmaffinity import FilmAffinityAdapter, MetadataUnavailable, canonical_url, parse_url
+from app.filmaffinity import FilmAffinityAdapter, MetadataUnavailable, canonical_url, lookup_url, parse_url
 from app.models import Admin, BrowserSession, Category, ImportPreview, MetadataCache, Work
 
 ROOT = Path(__file__).resolve().parent
@@ -267,6 +267,7 @@ def create_app(settings=None, adapter=None):
         with app.state.db() as db:
             try:
                 fa_id = parse_url(str(data.get("fa_url", "")))
+                source_url = lookup_url(fa_id, str(data.get("fa_url", "")))
                 values["fa_url"] = canonical_url(fa_id)
                 reference_url = values["fa_url"]
                 existing = library.by_fa(db, fa_id)
@@ -282,7 +283,7 @@ def create_app(settings=None, adapter=None):
                         raise MetadataUnavailable(
                             "Espera antes de consultar otra ficha. Puedes seguir con el formulario manual."
                         )
-                    payload = await run_in_threadpool(app.state.adapter.fetch, fa_id)
+                    payload = await run_in_threadpool(app.state.adapter.fetch, fa_id, source_url=source_url)
                     cached = db.get(MetadataCache, fa_id) or MetadataCache(fa_id=fa_id)
                     cached.payload, cached.fetched_at = json.dumps(payload, ensure_ascii=False), now()
                     cached.expires_at = int(time.time()) + 7 * 86400
