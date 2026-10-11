@@ -39,6 +39,28 @@ jobs:
         run: |
           uv run --frozen python scripts/check_compose.py
           uv run --frozen python scripts/check_compose.py compose.dockhand.yaml
+      - name: Verificar revisión del archivo público de GitHub
+        if: matrix.arch == 'amd64' && github.event_name == 'push' && github.event.repository.private == false
+        env:
+          ARCHIVE_REPOSITORY: ${{ github.repository }}
+          ARCHIVE_REVISION: ${{ github.sha }}
+        run: |
+          uv run --frozen python - <<'PY'
+          import io, os, re, tarfile, urllib.request
+          repository = os.environ['ARCHIVE_REPOSITORY']
+          revision = os.environ['ARCHIVE_REVISION']
+          assert re.fullmatch(r'[\w.-]+/[\w.-]+', repository)
+          assert re.fullmatch(r'[0-9a-f]{40}', revision)
+          url = f'https://github.com/{repository}/archive/{revision}.tar.gz'
+          with urllib.request.urlopen(url, timeout=20) as response:
+              content = response.read(8 * 1024 * 1024 + 1)
+          assert len(content) <= 8 * 1024 * 1024, 'Archivo demasiado grande'
+          with tarfile.open(fileobj=io.BytesIO(content), mode='r:gz') as archive:
+              matches = [entry for entry in archive if entry.name.endswith('/app/_archive_revision.txt')]
+              assert len(matches) == 1 and matches[0].isfile()
+              assert archive.extractfile(matches[0]).read(256).decode().strip() == revision
+          print(f'PUBLIC_ARCHIVE_REVISION_OK: {revision}')
+          PY
       - name: Construir imagen de la arquitectura del runner
         run: docker build -t no-lo-vuelvas-a-ver:test .
       - name: Smoke de contenedor y persistencia
