@@ -14,6 +14,7 @@ Comprobaciones ejecutadas el 11 de octubre de 2026 en un entorno Linux amd64 con
 | Compose | `uv run --frozen python scripts/check_compose.py` | Correcto; un servicio, imagen, bind explícito, variables exigidas, healthcheck |
 | Compose de Dockhand | `uv run --frozen python scripts/check_compose.py compose.dockhand.yaml` | Correcto; construcción desde archivo HTTPS, un servicio, ruta de datos y credenciales exigidas |
 | Archivo con carpeta raíz de GitHub | `uv run --frozen python tests/smoke_archive.py` | Construcción amd64 y smoke correctos; rutas COPY, acceso, reinicio, recreación, persistencia, backup y UID/GID |
+| Contexto HTTPS público real | `docker build --build-arg SOURCE_DIR=no-lo-vuelvas-a-ver-main -f no-lo-vuelvas-a-ver-main/Dockerfile https://github.com/kadyto/no-lo-vuelvas-a-ver/archive/refs/heads/main.tar.gz` | Construcción amd64 correcta desde la URL exacta del stack; smoke de acceso, persistencia y backup correcto sobre esa imagen |
 | Contenedor | `uv run --frozen python tests/smoke_image.py no-lo-vuelvas-a-ver:test` | Acceso, alta, reinicio, recreación, datos persistentes, copia SQLite y UID/GID personalizados correctos |
 | Navegador | `uv run --frozen python tests/browser_smoke.py` con Chromium | Escritorio 1440 px y móvil 390 px: acceso, alta, búsqueda, regreso conservando búsqueda, edición, Recomendable, borrado, fallback manual y ausencia de desplazamiento horizontal |
 | Capturas | Script de navegador con biblioteca temporal sintética | Generadas e inspeccionadas; disponibles en README y `docs/ejemplo-*.png` |
@@ -26,12 +27,12 @@ Advertencia de herramientas: el cliente de pruebas actual de Starlette avisa de 
 
 ## CI ejecutada y publicación pendiente
 
-- `checks.yml`: controles para pull requests y `main`, pruebas e imagen en runners nativos amd64 y arm64, sin publicación ni secretos. [Los nombres de runners se verificaron en documentación oficial](https://docs.github.com/en/actions/reference/runners/github-hosted-runners). La ejecución de Actions del commit `0645b363cc0a4398a6d430b01748b132131ca8f4` terminó correctamente en ambas arquitecturas: dependencias, tests, lint, lock, Compose, construcción y smoke/persistencia. El flujo de navegador también pasó en el runner amd64.
+- `checks.yml`: controles para pull requests y `main`, pruebas e imagen en runners nativos amd64 y arm64, sin publicación ni secretos. [Los nombres de runners se verificaron en documentación oficial](https://docs.github.com/en/actions/reference/runners/github-hosted-runners). [La ejecución de Actions](https://github.com/kadyto/no-lo-vuelvas-a-ver/actions/runs/38148342140) del commit `bf28aa5d23d298645787d87ce951d18b58be96c0` terminó correctamente en ambas arquitecturas: dependencias, tests, lint, lock, ambos Compose, construcción normal y desde archivo, smoke y persistencia. El flujo de navegador también pasó en el runner amd64.
 - `publish.yml`: controles previos y publicación multiarch en GHCR únicamente al crear una etiqueta estable `vX.Y.Z`, usando GITHUB_TOKEN. No se ha creado ninguna etiqueta ni release.
 - La prueba local de imagen es amd64; arm64 se verificó en el runner nativo de Actions. Esto no equivale a una prueba en todos los modelos de NAS.
 - GHCR: primera publicación, cambio de visibilidad a pública, manifiesto y descarga anónima. No existe una imagen pública verificada por esta entrega.
 - No se ha desplegado en un NAS real, Dockhand ni Portainer. Sus instrucciones y variables se contrastaron con documentación oficial y el Compose real se validó con Docker Compose.
-- La alternativa de Dockhand se probó localmente con un tar de carpeta anidada como el de GitHub. No requiere Git ni una imagen GHCR; requiere Internet durante la construcción. La ejecución dentro del administrador sigue pendiente de una instalación real.
+- La alternativa de Dockhand se probó con un tar de carpeta anidada y también descargando el archivo público real de `main` tras subir el commit `bf28aa5d23d298645787d87ce951d18b58be96c0`. Se construyó la imagen y pasó el smoke de persistencia. No requiere Git ni una imagen GHCR; requiere Internet durante la construcción. La ejecución dentro del administrador sigue pendiente de una instalación real.
 - Autocompletado real de FilmAffinity: desactivado por defecto. Condiciones revisadas; robots no verificable en la consulta de documentación. Parser y respuestas HTTP probados con muestras/simulaciones, sin afirmar permiso ni compatibilidad permanente con el HTML real.
 
 ## Repetir la revisión visual
