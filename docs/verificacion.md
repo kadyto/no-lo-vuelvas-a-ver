@@ -4,7 +4,9 @@ Comprobaciones ejecutadas el 11 de octubre de 2026 en un entorno Linux amd64 con
 
 ## Revisión del cliente Requests
 
-El adaptador usa Requests Session y mantiene el dominio solicitado. Las pruebas normales usan un transporte Requests sintético y nunca consultan FilmAffinity. La batería aislada del adaptador pasó **56 pruebas en 0,46 s**, incluyendo cabeceras predeterminadas, dominio móvil, identidad canónica, rechazo de destinos/IDs incorrectos, cookies de redirección, cuerpos de redirección sin descargar y diagnóstico sin atribuir el bloqueo a JavaScript. La batería completa y las imágenes de esta revisión se verifican mediante el workflow Controles.
+El adaptador usa Requests Session y mantiene el dominio solicitado. Las pruebas normales usan un transporte Requests sintético y nunca consultan FilmAffinity. La batería aislada del adaptador pasó **56 pruebas en 0,46 s**, incluyendo cabeceras predeterminadas, dominio móvil, identidad canónica, rechazo de destinos/IDs incorrectos, cookies de redirección, cuerpos de redirección sin descargar y diagnóstico sin atribuir el bloqueo a JavaScript.
+
+La [ejecución completa de Controles](https://github.com/kadyto/no-lo-vuelvas-a-ver/actions/runs/38158132083) del commit `60172873d56233f61ea3dc870ddf20abe29ce6bd` terminó correctamente: **101 pruebas pasan en amd64 (10,25 s) y arm64 (8,75 s)**; lint, lock, ambos Compose, imágenes, smoke de acceso/persistencia/backup/UID-GID y construcción desde archivo pasan en ambas arquitecturas. El flujo visual de escritorio y móvil también pasó en amd64. La búsqueda de 10.000 obras y alias midió 11,2/12,6/20,9 ms (mínimo/mediana/máximo) en amd64 y 15,3/15,4/23,5 ms en arm64, con 24 fichas por página. Las pruebas completas locales quedaron interrumpidas y se completaron en Actions; no se presentan como ejecutadas localmente.
 
 En una comprobación manual puntual desde el entorno de desarrollo, HTTPX y Requests obtuvieron HTTP 200 y HTML de ficha en la URL española de `www`; Requests recibió HTTP 302 de `m` hacia esa misma ficha de `www`. Se mantuvo la verificación TLS, no se guardó el HTML remoto ni se cargó ninguna obra real en la biblioteca. Esta comprobación no reproduce el 403 de otro equipo ni demuestra su causa. No forma parte de la suite automática ni garantiza disponibilidad futura.
 
@@ -38,7 +40,7 @@ La suite usa directorios temporales y obras sintéticas, no carga datos reales e
 
 Con **10.000 obras y 10.000 alias sintéticos**, cinco consultas de varias palabras y tildes en la segunda página midieron **13,5 ms mínimo, 15,2 ms mediana y 23,5 ms máximo**, con 24 fichas por página. Incluye recuento, consulta y carga de relaciones de esa página. Es una medición de este entorno, no una garantía para otro hardware. El navegador nunca descarga toda la base para buscar. La suite tiene un límite amplio de regresión de 5 s por consulta.
 
-Advertencia de herramientas: el cliente de pruebas actual de Starlette avisa de la futura preferencia por httpx2. Las 74 pruebas pasan con el httpx fijado y usado también por el adaptador; no se afirma que no exista ningún aviso de dependencias.
+Advertencia de herramientas: el cliente de pruebas actual de Starlette avisa de la futura preferencia por httpx2. Las pruebas pasan con el httpx fijado para el cliente de pruebas; el adaptador FilmAffinity usa ahora Requests. No se afirma que no exista ningún aviso de dependencias.
 
 ## CI ejecutada y publicación pendiente
 
