@@ -2,6 +2,12 @@
 
 Comprobaciones ejecutadas el 11 de octubre de 2026 en un entorno Linux amd64 con Python 3.12.14, Docker Engine y Compose v2. No representan una prueba en un NAS concreto ni una publicación en GHCR.
 
+## Corrección de compatibilidad HTTP
+
+Tras comparar el código de changedetection.io, se ejecutó `pytest -q tests/test_security_metadata.py -k 'not auth_csrf_escape_cookie and not login_limits_logout_change_password and not password_change'`: **48 pruebas pasan en 0,86 s**, usando exclusivamente HTML sintético y MockTransport. Cubren cabeceras, redirecciones de la misma ficha, rechazo de otros destinos/IDs/puertos/credenciales, resolución privada en una redirección, bucles limitados, bloqueo sin reintentos y comprobación humana indicada por cabecera. `ruff check`, `ruff format --check` y `git diff --check` pasan.
+
+La batería completa de esta revisión se deja al workflow `Controles` de GitHub Actions: el cliente ASGI se bloqueó bajo las restricciones de sockets de este entorno y se detuvo esa ejecución local. Las comprobaciones completas e imágenes de la tabla siguiente corresponden a la revisión anterior. La prueba HTTP real de FilmAffinity quedó interrumpida sin un resultado HTTP verificable; no se afirma que la corrección resuelva un bloqueo real ni que se haya probado el modo de una instalación concreta de changedetection.
+
 ## Ejecutado
 
 | Comprobación | Comando | Resultado |

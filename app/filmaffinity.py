@@ -3,14 +3,24 @@
 import ipaddress
 import re
 import socket
-from urllib.parse import urlsplit
+from urllib.parse import urljoin, urlsplit
 
 import httpx
 from bs4 import BeautifulSoup
 
 HOSTS = {"www.filmaffinity.com", "m.filmaffinity.com", "filmaffinity.com"}
-USER_AGENT = "NoLoVuelvasAVer/0.1 (personal-library; metadata-on-request)"
+# Same compatibility User-Agent as changedetection.io's default HTTP fetcher.
+# This is still an HTTP client: it does not run JavaScript or solve challenges.
+USER_AGENT = (
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/87.0.4280.66 Safari/537.36"
+)
+REQUEST_HEADERS = {
+    "User-Agent": USER_AGENT,
+    "Accept": "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "es-ES,es;q=0.9",
+}
 MAX_BYTES = 1_500_000
+MAX_REDIRECTS = 3
 
 
 class MetadataUnavailable(ValueError):
@@ -108,11 +118,40 @@ class FilmAffinityAdapter:
     def __init__(self, enabled=False, transport=None, resolver=socket.getaddrinfo):
         self.enabled, self.transport, self.resolver = enabled, transport, resolver
 
-    def _read(self, client, url, limit=MAX_BYTES):
+    def _validate_public_host(self, url):
+        addresses = self.resolver(urlsplit(url).hostname, 443, type=socket.SOCK_STREAM)
+        if not addresses or any(not ipaddress.ip_address(x[4][0]).is_global for x in addresses):
+            raise MetadataUnavailable("El destino de FilmAffinity no resuelve a una dirección pública.")
+
+    def _read(self, client, url, limit=MAX_BYTES, redirects=0):
+        self._validate_public_host(url)
         with client.stream("GET", url) as response:
-            if response.status_code != 200:
+            if response.status_code in {301, 302, 303, 307, 308}:
+                location = response.headers.get("Location", "")
+                destination = urljoin(url, location)
+                try:
+                    if (
+                        not location
+                        or urlsplit(destination).scheme != "https"
+                        or parse_url(destination) != parse_url(url)
+                    ):
+                        raise ValueError()
+                except ValueError:
+                    raise MetadataUnavailable(
+                        f"FilmAffinity devuelve una redirección no permitida (HTTP {response.status_code} "
+                        "al consultar la ficha). Completa los datos a mano."
+                    ) from None
+                if redirects >= MAX_REDIRECTS:
+                    raise MetadataUnavailable(
+                        "FilmAffinity devuelve demasiadas redirecciones al consultar la ficha. "
+                        "Completa los datos a mano."
+                    )
+                response.close()
+                return self._read(client, destination, limit, redirects + 1)
+            challenge = response.headers.get("cf-mitigated") == "challenge"
+            if response.status_code != 200 or challenge:
                 detail = f"HTTP {response.status_code} al consultar la ficha"
-                if response.status_code == 403:
+                if response.status_code == 403 or challenge:
                     # Inspect only a bounded prefix; never expose, persist or execute the remote HTML.
                     chunks, size, sample_limit = [], 0, min(limit, 32_768)
                     for chunk in response.iter_bytes(chunk_size=8192):
@@ -122,10 +161,11 @@ class FilmAffinityAdapter:
                         if size >= sample_limit:
                             break
                     soup = BeautifulSoup(b"".join(chunks).decode("utf-8", errors="replace"), "html.parser")
-                    if human_check_required(soup):
+                    if human_check_required(soup) or challenge:
                         message = (
                             f"FilmAffinity pide un captcha o una comprobación humana ({detail}). "
-                            "Resolverla en tu navegador no habilita necesariamente la consulta del servidor"
+                            "El cliente HTTP no ejecuta JavaScript. Resolverla en tu navegador no habilita "
+                            "necesariamente la consulta del servidor"
                         )
                     else:
                         message = (
@@ -158,13 +198,10 @@ class FilmAffinityAdapter:
                 "Autocompletado desactivado en esta instalación. La URL y el ID se conservan; completa los datos a mano."
             )
         try:
-            addresses = self.resolver("www.filmaffinity.com", 443, type=socket.SOCK_STREAM)
-            if not addresses or any(not ipaddress.ip_address(x[4][0]).is_global for x in addresses):
-                raise MetadataUnavailable("El destino de FilmAffinity no resuelve a una dirección pública.")
             with httpx.Client(
                 timeout=httpx.Timeout(8, connect=4),
                 follow_redirects=False,
-                headers={"User-Agent": USER_AGENT},
+                headers=REQUEST_HEADERS,
                 transport=self.transport,
             ) as client:
                 return parse_metadata(self._read(client, url))

@@ -14,9 +14,9 @@ Se busca una ficha existente antes de llamar al proveedor y antes de guardar. Un
 
 ## Autocompletado a petición
 
-El botón explícito inicia una consulta backend. El destino se construye a partir del ID validado; nunca se obtiene la URL arbitraria enviada por el navegador. No se siguen redirecciones. Se rechazan resoluciones a direcciones no públicas, errores y respuestas distintas de 200.
+El botón explícito inicia una consulta backend. El destino inicial se construye a partir del ID validado; nunca se obtiene la URL arbitraria enviada por el navegador. Se siguen como máximo tres redirecciones HTTPS a los dominios exactos admitidos y a una ficha con el mismo ID. Cada destino se valida y se comprueba su resolución pública antes de consultarlo. Se rechazan otros destinos, cambios de ID, bucles y respuestas finales distintas de 200.
 
-Cada intento obtiene únicamente la URL canónica de la ficha, sin una petición previa a `robots.txt`. Los metadatos se cachean siete días en SQLite. Límite global: una consulta nueva cada 15 segundos y 30 por hora. Timeout de conexión de 4 segundos y de lectura de 8 segundos; límite descomprimido de 1,5 MB por ficha. Los resultados cacheados pueden usarse sin otra consulta.
+Cada intento empieza por la URL canónica de la ficha, sin una petición previa a `robots.txt`. Solo puede continuar por las redirecciones de esa misma ficha; no sigue enlaces relacionados. Se envían cabeceras de aceptación de HTML, idioma español y un User-Agent compatible con el del cliente HTTP básico de changedetection.io. Los metadatos se cachean siete días en SQLite. Límite global: una consulta nueva cada 15 segundos y 30 por hora. Timeout de conexión de 4 segundos y de lectura de 8 segundos por petición; límite descomprimido de 1,5 MB por ficha. Los resultados cacheados pueden usarse sin otra consulta.
 
 El parser intenta leer título español, título original, año, tipo y hasta doce géneros explícitos. Si no identifica el tipo, el usuario lo completa. No traduce títulos, no añade alias inventados y no promete obtener todas las versiones idiomáticas. V1 no extrae alias cuando no hay una fuente inequívoca. Los géneros son sugerencias; solo se asignan categorías elegidas por el usuario. La vista previa debe confirmarse para guardar. Se conserva proveedor, fecha de obtención y una instantánea mínima de metadatos; los campos editados pueden diferir de ella.
 
@@ -24,10 +24,21 @@ No se copian sinopsis, carteles, críticas, reseñas ajenas ni puntuaciones del 
 
 ## Diagnóstico de un bloqueo y captcha
 
-El aviso muestra el código HTTP de la consulta a la ficha. Un **403** significa acceso rechazado; por sí solo no demuestra que exista un captcha. Se inspecciona como máximo un prefijo de 32 KiB de una respuesta 403 para detectar señales explícitas de comprobación humana, sin mostrar ni guardar el HTML recibido. Un **429** indica límite de consultas. Las redirecciones se indican y no se siguen. Un fallo de `robots.txt` no afecta al autocompletado porque la aplicación no lo consulta.
+El aviso muestra el código HTTP de la consulta a la ficha. Un **403** significa acceso rechazado; por sí solo no demuestra que exista un captcha. Se inspecciona como máximo un prefijo de 32 KiB de una respuesta 403 para detectar señales explícitas de comprobación humana, sin mostrar ni guardar el HTML recibido. También se reconoce la cabecera explícita `cf-mitigated: challenge`, incluso con HTTP 200; una cabecera genérica `Server: cloudflare` no basta para afirmar que hay un reto. Un **429** indica límite de consultas. Las redirecciones no permitidas se explican y no se consultan. No se reintentan automáticamente respuestas 403/429. Un fallo de `robots.txt` no afecta al autocompletado porque la aplicación no lo consulta.
 
 Cuando hay un fallo, el formulario conserva la URL canónica, su identidad y tus campos, y ofrece **Abrir ficha en FilmAffinity**. Puedes consultar los datos en esa pestaña y completarlos a mano.
 
 Una comprobación humana puede estar asociada a cookies, a la sesión del navegador o a la IP de salida. Resolverla al abrir FilmAffinity en tu navegador no garantiza que autorice también la petición del contenedor: son sesiones diferentes. Esta V1 no incrusta el captcha ni transfiere cookies o tokens del navegador al servidor. No se modifica la identidad ni se guarda automáticamente una obra por fallar el autocompletado.
+
+## Comparación con changedetection.io
+
+Se revisó su código público el 11 de octubre de 2026. No tiene un único mecanismo de extracción:
+
+- El [cliente HTTP básico](https://github.com/dgtlmoon/changedetection.io/blob/master/changedetectionio/content_fetchers/requests.py) usa Requests, sesiones y redirecciones. Su [configuración inicial](https://github.com/dgtlmoon/changedetection.io/blob/master/changedetectionio/model/App.py) define un User-Agent de Chrome, aunque este modo no ejecuta JavaScript. Nuestro adaptador ahora usa ese mismo User-Agent y acepta redirecciones limitadas de la misma ficha. Mantiene la verificación TLS.
+- El [modo Playwright](https://github.com/dgtlmoon/changedetection.io/blob/master/changedetectionio/content_fetchers/playwright.py) conecta a un navegador Chrome, carga la página, ejecuta JavaScript y espera antes de extraer el HTML. Su [Compose](https://github.com/dgtlmoon/changedetection.io/blob/master/docker-compose.yml) muestra un servicio de navegador opcional. Esta aplicación sigue siendo un contenedor ligero y no incorpora Chrome en producción.
+
+Por tanto, que una instalación de changedetection obtenga una ficha no demuestra que todas las peticiones HTTP vayan a obtenerla: pueden diferir el modo, las cabeceras, la sesión y la IP de salida. No se ha confirmado cuál usa una instalación ajena. La corrección elimina dos diferencias concretas del modo HTTP; no promete superar un reto JavaScript, captcha o bloqueo por IP.
+
+Para comprobarlo en tu NAS, reconstruye y recrea el stack de Dockhand, conserva `FILMAFFINITY_ENABLED=true` y solicita explícitamente la misma ficha. Si falla, el aviso indica el código y si hay señales de comprobación humana. En changedetection, compara la misma URL y revisa si el método es **Basic fast Plaintext/HTTP Client** o un navegador **Chrome/Playwright**. Las pruebas automáticas de este proyecto siguen usando respuestas simuladas.
 
 El adaptador está en `app/filmaffinity.py`, separado de `app/library.py`. Las pruebas usan muestras mínimas sintéticas y `httpx.MockTransport`; las pruebas normales no acceden a FilmAffinity. Los metadatos de terceros mantienen sus derechos y no se presentan como contenidos licenciados bajo MIT.
