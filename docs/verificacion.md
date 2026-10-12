@@ -1,6 +1,14 @@
 # Verificación de la primera versión
 
-Comprobaciones ejecutadas el 11 de octubre de 2026 en un entorno Linux amd64 con Python 3.12.14, Docker Engine y Compose v2. No representan una prueba en un NAS concreto ni una publicación en GHCR.
+Comprobaciones ejecutadas el 11 y 12 de octubre de 2026 en un entorno Linux amd64 con Python 3.12.14, Docker Engine y Compose v2. No representan una prueba en un NAS concreto ni una publicación en GHCR.
+
+## Icono y paleta cinematográfica
+
+El 12 de octubre se sustituyó la marca de letra por un icono original generado para la aplicación: ojo, bobina y cinta de cine en azul y amarillo. Cabecera y favicon utilizan PNG locales con transparencia, de 256 × 256 (72.869 bytes) y 64 × 64 (7.405 bytes). Se eliminó «Hay historias que se quedan» y se simplificó el acceso.
+
+Lint y comprobación del diff pasan. Se midió el contraste de las combinaciones principales: blanco/azul de botones **6,82:1**, azul oscuro/amarillo **10,51:1**, texto secundario/fondo **5,78:1** y blanco/azul de cabecera **10,43:1**. Todas superan 4,5:1 para texto normal. Estas mediciones no sustituyen la revisión de teclado y foco del navegador.
+
+La [ejecución completa de Controles](https://github.com/kadyto/no-lo-vuelvas-a-ver/actions/runs/38307250060) del commit `2193ee82031c22318c1b96f27a52494fa2af4e51` terminó correctamente: **125 pruebas pasan en amd64 (11,77 s) y arm64 (9,22 s)**; lint, lock, ambos Compose, imágenes normales y desde archivo, smoke de acceso/persistencia/backup/UID-GID y revisión del archivo público pasan. El navegador de amd64 pasó acceso, carga del icono/favicon local y todos los flujos de escritorio y móvil, sin desplazamiento horizontal. Las capturas del README y del acceso corresponden a esa ejecución con datos ficticios.
 
 ## Aviso de actualizaciones e inicio compacto
 
