@@ -83,6 +83,13 @@ def main():
                     errors = []
                     page.on("pageerror", lambda error: errors.append(str(error)))
                     page.goto(base)
+                    assert page.get_by_role("heading", name="Entra en tu biblioteca", exact=True).is_visible()
+                    assert page.get_by_text("Hay historias", exact=False).count() == 0
+                    assert page.locator(".brand-icon").evaluate(
+                        "image => image.complete && image.naturalWidth > 0"
+                    )
+                    assert context.request.get(base + "/static/icon.png").status == 200
+                    page.screenshot(path=str(artifacts / "acceso-escritorio.png"), full_page=True)
                     page.get_by_label("Usuario", exact=True).fill("demo")
                     page.get_by_label("Contraseña", exact=True).fill(password)
                     page.get_by_role("button", name="Entrar", exact=True).click()
@@ -150,6 +157,8 @@ def main():
                     mobile.route("**/updates", update_route)
                     mp = mobile.new_page()
                     mp.goto(base)
+                    assert mp.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
+                    mp.screenshot(path=str(artifacts / "acceso-movil.png"), full_page=True)
                     mp.locator("#username").fill("demo")
                     mp.locator("#password").fill(password)
                     mp.get_by_role("button", name="Entrar", exact=True).click()
@@ -182,7 +191,7 @@ def main():
                     assert not errors
                     browser.close()
                     print(
-                        "BROWSER_OK: desktop/mobile login, create, search, return state, edit, recommendation, deletion, manual fallback, update notice/offline, no horizontal overflow"
+                        "BROWSER_OK: desktop/mobile login, local icon/favicon, create, search, return state, edit, recommendation, deletion, manual fallback, update notice/offline, no horizontal overflow"
                     )
             finally:
                 process.terminate()

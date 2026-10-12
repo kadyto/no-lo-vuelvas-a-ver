@@ -2,15 +2,16 @@
 <html lang="es">
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#182925">
+  <meta name="theme-color" content="#081d49">
   <title>{% block title %}No lo vuelvas a ver{% endblock %}</title>
-  <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+  <link rel="icon" href="/static/icon.png" type="image/png" sizes="64x64">
+  <link rel="apple-touch-icon" href="/static/brand.png">
   <link rel="stylesheet" href="/static/app.css"><script src="/static/app.js" defer></script>
 </head>
 <body>
 <a class="skip" href="#content">Saltar al contenido</a>
 <header class="site-header"><div class="header-inner">
-  <a class="brand" href="/"><span class="brand-icon" aria-hidden="true">N<span>↺</span></span><span>No lo vuelvas a ver<small>Tu memoria de películas y series</small></span></a>
+  <a class="brand" href="/"><img class="brand-icon" src="/static/brand.png" alt="" width="64" height="64"><span>No lo vuelvas a ver<small>Tu memoria de películas y series</small></span></a>
   {% if authenticated %}<nav aria-label="Navegación principal"><a href="/">Biblioteca</a><a href="/categories">Categorías</a><a href="/settings">Ajustes</a><form action="/logout" method="post"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="nav-button">Salir</button></form></nav>{% endif %}
 </div></header>
 <main id="content" class="shell">
