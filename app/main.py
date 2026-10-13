@@ -20,7 +20,8 @@ from app import auth, library, transfers
 from app.config import Settings
 from app.db import make_engine, migrate, now, sessions
 from app.filmaffinity import FilmAffinityAdapter, MetadataUnavailable, canonical_url, lookup_url, parse_url
-from app.models import Admin, BrowserSession, Category, ImportPreview, MetadataCache, Work
+from app.models import Admin, BrowserSession, Category, ImportPreview, MetadataCache, Person, Poster, Work
+from app.schemas import PosterData
 from app.updates import BuildInfo, UpdateChecker
 
 ROOT = Path(__file__).resolve().parent
@@ -176,6 +177,18 @@ def create_app(settings=None, adapter=None):
     async def updates():
         return await run_in_threadpool(app.state.updates.check)
 
+    @app.get("/posters/{digest}")
+    def poster_image(digest: str):
+        import re
+
+        if not re.fullmatch(r"[0-9a-f]{64}", digest):
+            raise HTTPException(404, "La carátula no existe.")
+        with app.state.db() as db:
+            item = db.get(Poster, digest)
+            if not item:
+                raise HTTPException(404, "La carátula no existe.")
+            return Response(item.data, media_type=item.media_type)
+
     @app.post("/login")
     async def login(request: Request):
         data = await form(request)
@@ -214,7 +227,13 @@ def create_app(settings=None, adapter=None):
     def home(request: Request):
         params = request.query_params
         with app.state.db() as db:
+            person_filter = None
             try:
+                person_id = int(params["person"]) if params.get("person") else None
+                if person_id is not None:
+                    person_filter = db.get(Person, person_id)
+                    if not person_filter:
+                        raise HTTPException(404, "La persona no está en tu biblioteca.")
                 result = library.search(
                     db,
                     q=params.get("q", ""),
@@ -226,10 +245,14 @@ def create_app(settings=None, adapter=None):
                     unrated=params.get("unrated") == "1",
                     sort=params.get("sort", "title"),
                     page=int(params.get("page", "1")),
+                    person_id=person_id,
                 )
                 error = None
             except ValueError as exc:
-                result, error = library.search(db), str(exc)
+                result, error = (
+                    library.search(db, person_id=person_filter.id if person_filter else None),
+                    str(exc),
+                )
 
             def page_url(page):
                 values = [(k, v) for k, v in params.multi_items() if k != "page"] + [("page", str(page))]
@@ -249,6 +272,9 @@ def create_app(settings=None, adapter=None):
                 kind_url=kind_url,
                 return_to="/?" + str(params),
                 error=error,
+                person_filter=person_filter,
+                clear_person_url="/?"
+                + urlencode([(k, v) for k, v in params.multi_items() if k not in {"person", "page"}]),
             )
 
     @app.get("/works/new")
@@ -269,21 +295,31 @@ def create_app(settings=None, adapter=None):
 
     @app.post("/metadata")
     async def metadata(request: Request):
+        return await metadata_preview(request)
+
+    @app.post("/works/{work_id}/metadata")
+    async def metadata_existing(request: Request, work_id: int):
+        return await metadata_preview(request, work_id)
+
+    async def metadata_preview(request, work_id=None):
         data = await form(request)
         values = form_values(data)
         return_to = safe_return(data.get("return_to"))
         reference_url = None
         with app.state.db() as db:
+            work = get_work(db, work_id) if work_id else None
+            if work and work.poster_id:
+                values.setdefault("poster_preview_id", work.poster_id)
             try:
                 fa_id = parse_url(str(data.get("fa_url", "")))
                 source_url = lookup_url(fa_id, str(data.get("fa_url", "")))
                 values["fa_url"] = canonical_url(fa_id)
                 reference_url = values["fa_url"]
                 existing = library.by_fa(db, fa_id)
-                if existing:
+                if existing and (not work or existing.id != work.id):
                     return render(request, "duplicate.html", status=409, work=existing, return_to=return_to)
                 cached = db.get(MetadataCache, fa_id)
-                if cached and cached.expires_at > time.time():
+                if cached and cached.expires_at > time.time() and data.get("refresh_metadata") != "1":
                     payload = json.loads(cached.payload)
                 else:
                     if not auth.consume_limit(db, "metadata-interval", 1, 15) or not auth.consume_limit(
@@ -293,24 +329,58 @@ def create_app(settings=None, adapter=None):
                             "Espera antes de consultar otra ficha. Puedes seguir con el formulario manual."
                         )
                     payload = await run_in_threadpool(app.state.adapter.fetch, fa_id, source_url=source_url)
+                    if payload.get("poster_url"):
+                        try:
+                            if not hasattr(app.state.adapter, "fetch_poster"):
+                                raise MetadataUnavailable("El adaptador no ofrece descarga de carátulas.")
+                            image = await run_in_threadpool(
+                                app.state.adapter.fetch_poster, payload["poster_url"]
+                            )
+                            stamp = now()
+                            # Validate the normalized asset again at the persistence boundary.
+                            import base64
+
+                            normalized = PosterData(
+                                content=base64.b64encode(image["data"]).decode("ascii"),
+                                media_type=image["media_type"],
+                                source_url=image["source_url"],
+                                fetched_at=stamp,
+                            )
+                            poster = library.store_poster(
+                                db, normalized.raw, normalized.media_type, normalized.source_url, stamp
+                            )
+                            payload["poster_id"] = poster.id
+                        except (ValueError, MetadataUnavailable) as exc:
+                            payload["poster_warning"] = str(exc)
                     cached = db.get(MetadataCache, fa_id) or MetadataCache(fa_id=fa_id)
                     cached.payload, cached.fetched_at = json.dumps(payload, ensure_ascii=False), now()
                     cached.expires_at = int(time.time()) + 7 * 86400
                     db.add(cached)
                     db.commit()
+                    library.prune_posters(db)
+                    db.commit()
                 for field in ("title", "original_title", "year", "kind"):
                     if payload.get(field) is not None:
                         values[field] = payload[field]
+                for field in ("directors", "actors"):
+                    if payload.get(field):
+                        values[field] = "\n".join(p["name"] for p in payload[field])
+                values["metadata_confirm"] = "on"
+                values["metadata_obtained_at"] = cached.fetched_at
+                if payload.get("poster_id"):
+                    values["poster_preview_id"] = payload["poster_id"]
+                    if "poster_control" not in values:
+                        values["use_poster"] = "on"
                 return render(
                     request,
                     "form.html",
                     values=values,
                     categories=cats(db),
-                    work=None,
+                    work=work,
                     return_to=return_to,
                     metadata=payload,
                     obtained_at=cached.fetched_at,
-                    notice="Vista previa: revisa los datos obtenidos y completa los que faltan. Todavía no se ha guardado ninguna ficha.",
+                    notice="Vista previa: revisa los datos obtenidos y completa los que faltan. Los cambios solo se aplican al guardar.",
                 )
             except (ValueError, MetadataUnavailable) as exc:
                 return render(
@@ -318,7 +388,7 @@ def create_app(settings=None, adapter=None):
                     "form.html",
                     values=values,
                     categories=cats(db),
-                    work=None,
+                    work=work,
                     return_to=return_to,
                     error=str(exc),
                     metadata_url=reference_url if isinstance(exc, MetadataUnavailable) else None,
@@ -340,7 +410,24 @@ def create_app(settings=None, adapter=None):
             work = get_work(db, work_id) if work_id else None
             categories = cats(db)
             try:
-                validated = library.parse_form(data, categories)
+                known = library.work_data(work) if work else {}
+                cached = None
+                if data.get("metadata_confirm") == "on" and data.get("fa_url"):
+                    cached = db.get(MetadataCache, parse_url(str(data["fa_url"])))
+                    if not cached or data.get("metadata_obtained_at") != cached.fetched_at:
+                        raise ValueError(
+                            "La vista previa de FilmAffinity ha cambiado o caducado. Obtén los datos de nuevo antes de guardar."
+                        )
+                    payload = json.loads(cached.payload)
+                    for field in ("directors", "actors"):
+                        if payload.get(field):
+                            known[field] = payload[field]
+                validated = library.parse_form(data, categories, known_people=known)
+                candidate = work.poster if work else None
+                if cached and json.loads(cached.payload).get("poster_id"):
+                    candidate = db.get(Poster, json.loads(cached.payload)["poster_id"])
+                if candidate and (data.get("poster_control") != "1" or data.get("use_poster") == "on"):
+                    validated.poster = PosterData.model_validate(library.poster_data(candidate))
                 if not work and not validated.fa_id and data.get("allow_similar") != "on":
                     matches = library.possible_matches(db, validated)
                     if matches:
@@ -355,8 +442,7 @@ def create_app(settings=None, adapter=None):
                             return_to=return_to,
                             error="Hay posibles coincidencias. Revisa sus fichas y confirma si quieres crear otra obra.",
                         )
-                if not work and data.get("metadata_confirm") == "on" and validated.fa_id:
-                    cached = db.get(MetadataCache, validated.fa_id)
+                if cached and validated.fa_id:
                     if cached:
                         from datetime import datetime
 
@@ -398,6 +484,10 @@ def create_app(settings=None, adapter=None):
                 a.title + (" | " + a.language if a.language else "") for a in work.aliases
             )
             values["category_ids"] = [str(c.id) for c in work.categories]
+            for field in ("directors", "actors"):
+                values[field] = "\n".join(p["name"] for p in values[field])
+            if work.poster_id:
+                values.update(poster_preview_id=work.poster_id, use_poster="on", poster_control="1")
             return render(
                 request,
                 "form.html",
@@ -434,6 +524,8 @@ def create_app(settings=None, adapter=None):
             raise HTTPException(422, "Confirma el borrado de la ficha.")
         with app.state.db() as db:
             db.delete(get_work(db, work_id))
+            db.commit()
+            library.prune_posters(db)
             db.commit()
         return redirect(safe_return(data.get("return_to")))
 

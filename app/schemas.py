@@ -1,3 +1,5 @@
+import base64
+import binascii
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Literal
@@ -6,6 +8,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.filmaffinity import canonical_url, parse_url
+from app.posters import MAX_SAVED_BYTES, poster_url, validate_saved_poster
 
 
 class StrictModel(BaseModel):
@@ -23,6 +26,48 @@ class AliasData(StrictModel):
         if not value:
             raise ValueError("El título no puede estar vacío.")
         return value
+
+
+class PersonData(StrictModel):
+    name: str = Field(min_length=1, max_length=200)
+    fa_id: str | None = Field(default=None, max_length=16)
+
+    @field_validator("name")
+    @classmethod
+    def clean_name(cls, value):
+        value = " ".join(value.split())
+        if not value:
+            raise ValueError("El nombre de la persona no puede estar vacío.")
+        return value
+
+    @field_validator("fa_id")
+    @classmethod
+    def valid_id(cls, value):
+        if value is not None:
+            if not value.isascii() or not value.isdigit() or not 1 <= int(value) < 10**16:
+                raise ValueError("ID de persona de FilmAffinity inválido.")
+            return str(int(value))
+        return value
+
+
+class PosterData(StrictModel):
+    content: str = Field(max_length=((MAX_SAVED_BYTES + 2) // 3) * 4)
+    media_type: Literal["image/jpeg", "image/png", "image/webp"]
+    source_url: str = Field(max_length=1000)
+    fetched_at: datetime
+
+    @property
+    def raw(self):
+        return base64.b64decode(self.content, validate=True)
+
+    @model_validator(mode="after")
+    def valid_image(self):
+        poster_url(self.source_url)
+        try:
+            validate_saved_poster(self.raw, self.media_type)
+        except (ValueError, binascii.Error) as exc:
+            raise ValueError("Carátula de exportación inválida: " + str(exc)) from None
+        return self
 
 
 class WorkData(StrictModel):
@@ -44,6 +89,9 @@ class WorkData(StrictModel):
     metadata_source: Literal["FilmAffinity"] | None = None
     metadata_fetched_at: datetime | None = None
     metadata_snapshot: dict | None = None
+    directors: list[PersonData] = Field(default_factory=list, max_length=20)
+    actors: list[PersonData] = Field(default_factory=list, max_length=100)
+    poster: PosterData | None = None
 
     @field_validator("title")
     @classmethod
@@ -91,7 +139,7 @@ class WorkData(StrictModel):
 
 class LibraryExport(StrictModel):
     format: Literal["no-lo-vuelvas-a-ver"]
-    version: Literal[1]
+    version: Literal[1, 2]
     exported_at: datetime
     categories: list[str] = Field(max_length=1000)
     works: list[WorkData] = Field(max_length=50_000)

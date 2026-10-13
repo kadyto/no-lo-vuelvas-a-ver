@@ -8,13 +8,13 @@ from app.library import category, save_work, work_data
 from app.models import Category, Work
 from app.schemas import LibraryExport
 
-MAX_IMPORT_BYTES = 10 * 1024 * 1024
+MAX_IMPORT_BYTES = 50 * 1024 * 1024
 
 
 def export_library(db):
     return LibraryExport(
         format="no-lo-vuelvas-a-ver",
-        version=1,
+        version=2,
         exported_at=datetime.now(timezone.utc),
         categories=list(db.scalars(select(Category.name).order_by(Category.name_key))),
         works=[work_data(x) for x in db.scalars(select(Work).order_by(Work.id)).unique()],
@@ -24,7 +24,7 @@ def export_library(db):
 def read_import(content):
     if len(content) > MAX_IMPORT_BYTES:
         raise ValueError(
-            "El archivo supera el límite de 10 MiB. Divide la exportación o usa una restauración SQLite."
+            "El archivo supera el límite de 50 MiB. Divide la exportación o usa una restauración SQLite."
         )
     try:
         return LibraryExport.model_validate_json(content)
@@ -92,6 +92,9 @@ def export_csv(db):
             "Nota",
             "Recomendable",
             "Fecha de visionado",
+            "Dirección (JSON)",
+            "Reparto (JSON)",
+            "Origen carátula",
             "Anotaciones",
         ]
     )
@@ -111,6 +114,9 @@ def export_csv(db):
             work.review.score,
             "Sí" if work.review.recommended else "No",
             work.review.watched_on,
+            json.dumps([{"name": p.name, "fa_id": p.fa_id} for p in work.directors], ensure_ascii=False),
+            json.dumps([{"name": p.name, "fa_id": p.fa_id} for p in work.actors], ensure_ascii=False),
+            work.poster.source_url if work.poster else None,
             work.review.notes,
         ]
         writer.writerow([safe_csv(x) for x in values])

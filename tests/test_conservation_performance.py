@@ -66,22 +66,29 @@ def test_migration_keeps_data_and_backups(tmp_path):
     config.set_main_option("script_location", str(root / "migrations"))
     config.set_main_option("sqlalchemy.url", f"sqlite:///{path}")
     command.upgrade(config, "0001")
-    engine = make_engine(path)
-    with sessions(engine)() as db:
-        work = library.save_work(
-            db,
-            WorkData(
-                title="Antes de migrar",
-                kind="series",
-                fa_id="555",
-                score="9.5",
-                notes="Se conserva",
-                aliases=[{"title": "Before"}],
-                categories=["Drama"],
+    stamp, uid = now(), str(uuid4())
+    # Populate the frozen legacy schema without using models containing newer columns.
+    with sqlite3.connect(path) as conn:
+        conn.execute(
+            "INSERT INTO works (id,uid,fa_id,fa_url,title,title_key,original_key,kind,created_at,updated_at) VALUES (1,?,?,?,?,?,?,?,?,?)",
+            (
+                uid,
+                "555",
+                "https://www.filmaffinity.com/es/film555.html",
+                "Antes de migrar",
+                "antes de migrar",
+                "",
+                "series",
+                stamp,
+                stamp,
             ),
         )
-        expected = library.work_data(work)
-    engine.dispose()
+        conn.execute(
+            "INSERT INTO reviews (work_id,score_half,notes,recommended) VALUES (1,19,'Se conserva',0)"
+        )
+        conn.execute("INSERT INTO aliases (work_id,title,title_key) VALUES (1,'Before','before')")
+        conn.execute("INSERT INTO categories (id,name,name_key) VALUES (1,'Drama','drama')")
+        conn.execute("INSERT INTO work_categories VALUES (1,1)")
     migrate(path)
     copies = list((tmp_path / "backups").glob("*.sqlite3"))
     assert len(copies) == 1
@@ -89,7 +96,11 @@ def test_migration_keeps_data_and_backups(tmp_path):
         assert db.execute("SELECT version_num FROM alembic_version").fetchone()[0] == "0001"
     engine = make_engine(path)
     with sessions(engine)() as db:
-        assert library.work_data(db.get(Work, work.id)) == expected
+        work = db.get(Work, 1)
+        assert work.uid == uid and work.fa_id == "555" and work.title == "Antes de migrar"
+        assert work.review.score == 9.5 and work.review.notes == "Se conserva"
+        assert work.aliases[0].title == "Before" and work.categories[0].name == "Drama"
+        assert work.created_at == stamp and work.poster is None and work.credits == []
     engine.dispose()
     migrate(path)
     assert len(list((tmp_path / "backups").glob("*.sqlite3"))) == 1

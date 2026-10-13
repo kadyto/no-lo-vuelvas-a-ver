@@ -1,9 +1,10 @@
 """Adaptador opcional: solo metadatos mínimos, nunca catálogo ni contenidos editoriales."""
 
 import ipaddress
+import json
 import re
 import socket
-from urllib.parse import urljoin, urlsplit
+from urllib.parse import parse_qs, urljoin, urlsplit
 
 import requests
 from bs4 import BeautifulSoup
@@ -74,6 +75,86 @@ def human_check_required(soup):
     )
 
 
+def person_reference(name, href=None):
+    if not isinstance(name, str):
+        return None
+    name = " ".join(name.split())
+    if not name or len(name) > 200:
+        return None
+    external_id = None
+    if isinstance(href, str) and href:
+        try:
+            parts = urlsplit(urljoin("https://www.filmaffinity.com/es/", href))
+            ids = parse_qs(parts.query).get("name-id", [])
+            if (
+                parts.scheme == "https"
+                and parts.hostname in HOSTS
+                and parts.username is None
+                and parts.password is None
+                and parts.port is None
+                and re.fullmatch(r"/[a-z]{2}/name\.php", parts.path)
+                and len(ids) == 1
+                and re.fullmatch(r"[0-9]{1,16}", ids[0])
+                and int(ids[0]) > 0
+            ):
+                external_id = str(int(ids[0]))
+        except ValueError:
+            pass
+    return {"name": name, "fa_id": external_id}
+
+
+def credit_names(element):
+    names = []
+    for link in element.select("a[href]"):
+        if "name.php" in link.get("href", ""):
+            person = person_reference(link.get_text(" ", strip=True), link.get("href"))
+            if person:
+                names.append(person)
+    if not names:
+        for node in element.select('[itemprop="name"]'):
+            person = person_reference(node.get_text(" ", strip=True))
+            if person:
+                names.append(person)
+    return names
+
+
+def structured_movie(soup):
+    for script in soup.select('script[type="application/ld+json"]')[:4]:
+        try:
+            value = json.loads(script.string or script.get_text())
+        except (ValueError, RecursionError):
+            continue
+        items = value if isinstance(value, list) else [value]
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            candidates = [item] + (item.get("@graph", []) if isinstance(item.get("@graph"), list) else [])
+            for candidate in candidates:
+                if isinstance(candidate, dict):
+                    types = candidate.get("@type", [])
+                    types = [types] if isinstance(types, str) else types
+                    if isinstance(types, list) and any(
+                        t in {"Movie", "TVSeries"} for t in types if isinstance(t, str)
+                    ):
+                        return candidate
+    return {}
+
+
+def json_people(value):
+    items = value if isinstance(value, list) else [value]
+    people = []
+    for item in items[:100]:
+        if isinstance(item, dict):
+            person = person_reference(item.get("name"), item.get("url"))
+        elif isinstance(item, str):
+            person = person_reference(item)
+        else:
+            person = None
+        if person:
+            people.append(person)
+    return people
+
+
 def parse_metadata(html):
     soup = BeautifulSoup(html, "html.parser")
     if human_check_required(soup):
@@ -89,6 +170,7 @@ def parse_metadata(html):
         )
     title = title_el.get_text(" ", strip=True)
     original, year, genres, kind = None, None, [], None
+    directors, actors = [], []
     for dt in soup.select("dt"):
         dd = dt.find_next_sibling("dd")
         if not dd:
@@ -106,11 +188,53 @@ def parse_metadata(html):
             ]
             if "Serie de TV" in value:
                 kind = "series"
+        elif label in {"dirección", "director", "directores"}:
+            directors = credit_names(dd)
+        elif label == "reparto":
+            actors = credit_names(dd)
     # An explicit schema.org type is accepted; absent evidence leaves type for the user.
     if soup.select_one('[itemtype="https://schema.org/Movie"], [itemtype="http://schema.org/Movie"]'):
         kind = kind or "movie"
     if soup.select_one('[itemtype="https://schema.org/TVSeries"], [itemtype="http://schema.org/TVSeries"]'):
         kind = "series"
+    structured = structured_movie(soup)
+    directors = directors or json_people(structured.get("director"))
+    actors = actors or json_people(structured.get("actor"))
+    structured_type = structured.get("@type", [])
+    if not kind and structured_type:
+        kind = "series" if "TVSeries" in structured_type else "movie"
+    image_url = None
+    candidates = []
+    for node in soup.select(
+        '#movie-main-image[href], #movie-main-image a[href], #movie-main-image img, img#movie-main-image, img[itemprop="image"]'
+    ):
+        candidates.append(node.get("href") or node.get("src") or node.get("data-src"))
+    image = structured.get("image")
+    if isinstance(image, list):
+        image = image[0] if image else None
+    if isinstance(image, dict):
+        image = image.get("url") or image.get("contentUrl")
+    candidates.append(image)
+    # Validate even URLs obtained from remote HTML. No browser hotlink or arbitrary backend fetch.
+    from app.posters import poster_url
+
+    for candidate in candidates:
+        if isinstance(candidate, str):
+            try:
+                image_url = poster_url(urljoin("https://www.filmaffinity.com/", candidate))
+                break
+            except ValueError:
+                continue
+
+    def unique_people(items, limit):
+        seen, result = set(), []
+        for item in items:
+            key = ("fa", item["fa_id"]) if item["fa_id"] else ("name", item["name"].casefold())
+            if key not in seen:
+                seen.add(key)
+                result.append(item)
+        return result[:limit]
+
     return {
         "title": title[:300],
         "original_title": (original or "")[:300] or None,
@@ -118,6 +242,9 @@ def parse_metadata(html):
         "kind": kind,
         "genres": list(dict.fromkeys(genres))[:12],
         "aliases": [],
+        "directors": unique_people(directors, 20),
+        "actors": unique_people(actors, 100),
+        "poster_url": image_url,
     }
 
 
@@ -224,3 +351,8 @@ class FilmAffinityAdapter:
             raise MetadataUnavailable(
                 "No se ha podido conectar con FilmAffinity. Completa los datos a mano."
             ) from None
+
+    def fetch_poster(self, url):
+        from app.posters import PosterFetcher
+
+        return PosterFetcher(self.enabled, self.transport, self.resolver).fetch(url)

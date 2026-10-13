@@ -9,11 +9,14 @@ Una instalación, una biblioteca compartida y una cuenta de acceso. Interfaz en 
 - Películas y series vistas; ficha general para cada serie, sin temporadas ni episodios.
 - Alta por URL de FilmAffinity (incluidos enlaces móviles `m.`) o manual; identidad única por ID y protección ante altas simultáneas.
 - Título principal, original y alias con idioma; año, categorías múltiples, fecha de visionado opcional.
+- Carátula local, dirección y reparto obtenidos de la ficha de FilmAffinity cuando estén disponibles. Los nombres enlazan a otras obras de tu biblioteca; funcionan sin Internet.
 - Nota opcional de 1 a 10 en pasos de 0,5, anotaciones y marca Recomendable independiente.
 - Búsqueda por títulos, alias, ID y URL; ignora mayúsculas y tildes. Filtros combinables, orden y paginación del servidor.
 - Gestión de categorías, cambio de contraseña, JSON completo, CSV y importación con vista previa y conflictos explícitos.
 - SQLite persistente, migraciones y copias consistentes antes de cambios de esquema.
 - Enlace al proyecto en GitHub y aviso de actualizaciones: releases estables o cambios en `main` para instalaciones de desarrollo, sin instalación automática.
+
+Para fichas existentes usa **Editar ficha → Obtener carátula y equipo** y confirma con **Guardar cambios**. Consulta [la guía de carátulas y equipo](docs/caratulas-y-equipo.md).
 
 No se incluye una biblioteca precargada. Las capturas y pruebas usan datos ficticios creados expresamente.
 
@@ -85,7 +88,7 @@ No ejecutes `docker compose config` sin `--quiet` en logs compartidos: puede mos
 
 Los datos se guardan en `/data/library.sqlite3`, con WAL y timeout de escritura de 10 segundos. Guarda esa carpeta en disco local del host Docker; no uses SMB/NFS ni compartas SQLite entre hosts o varias instancias.
 
-En **Ajustes** puedes exportar JSON versionado o CSV. Una importación valida el archivo entero, muestra conflictos por UUID/ID y permite omitirlos o cancelar; no sobrescribe fichas existentes. Máximo 10 MiB por archivo. CSV conserva caracteres y saltos de línea y neutraliza fórmulas.
+En **Ajustes** puedes exportar JSON v2 completo (incluye carátulas, dirección y reparto) o CSV. También se importan exportaciones v1. Una importación valida el archivo entero, muestra conflictos por UUID/ID y permite omitirlos o cancelar; no sobrescribe fichas existentes. Máximo 50 MiB por archivo; para bibliotecas mayores usa una copia SQLite. CSV conserva caracteres y saltos de línea y neutraliza fórmulas.
 
 Para una copia completa consistente:
 
@@ -126,4 +129,4 @@ FastAPI + SQLAlchemy + Alembic + SQLite + Jinja2 y JavaScript mínimo. Sin servi
 
 [AGENTS.md](AGENTS.md) · [CHANGELOG](CHANGELOG.md) · [ROADMAP](ROADMAP.md)
 
-Código bajo [MIT](LICENSE). Los metadatos, nombres y contenidos de terceros conservan sus propios derechos; no quedan cubiertos por esta licencia. Proyecto independiente sin relación oficial con FilmAffinity. V1 no copia carteles, críticas ajenas, sinopsis extensas ni puntuaciones de FilmAffinity.
+Código bajo [MIT](LICENSE). Los metadatos, nombres y carátulas de terceros conservan sus propios derechos; no quedan cubiertos por esta licencia. Proyecto independiente sin relación oficial con FilmAffinity. No se copian críticas ajenas, sinopsis extensas ni puntuaciones de FilmAffinity.

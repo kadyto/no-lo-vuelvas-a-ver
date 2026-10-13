@@ -1,6 +1,16 @@
 # Verificación de la primera versión
 
-Comprobaciones ejecutadas el 11 y 12 de octubre de 2026 en un entorno Linux amd64 con Python 3.12.14, Docker Engine y Compose v2. No representan una prueba en un NAS concreto ni una publicación en GHCR.
+Comprobaciones ejecutadas del 11 al 13 de octubre de 2026 en un entorno Linux amd64 con Python 3.12.14, Docker Engine y Compose v2. No representan una prueba en un NAS concreto ni una publicación en GHCR.
+
+## Carátulas locales, dirección y reparto
+
+El 13 de octubre se añadieron imágenes guardadas en SQLite, personas con identidad externa y créditos de dirección/reparto. La migración 0003 conserva las fichas y valoraciones y expira la caché anterior. JSON v2 incluye las imágenes y personas y admite archivos v1.
+
+Las comprobaciones aisladas locales pasaron **79 pruebas en 1,55 s** (cuatro pruebas HTTP excluidas): parser, descarga simulada, destinos/direcciones/redirecciones no admitidos, formatos y tamaños inválidos, imágenes animadas, homónimos, filtros por persona, independencia de la valoración, exportación/importación, copia y restauración de carátulas y créditos, limpieza de caché y migración desde un esquema congelado. Lint, formato, diff y exportación reproducible del lock pasan.
+
+La [ejecución completa previa a main](https://github.com/kadyto/no-lo-vuelvas-a-ver/actions/runs/38450941451) del commit `a374b49e2da51ceff62795deabec10bb974574fd` terminó correctamente: **148 pruebas pasan en amd64 (14,37 s) y arm64 (12,86 s)**. Ambos Compose, imágenes normales y de archivo, smoke de acceso/persistencia/backup/UID-GID y revisión del archivo público pasan. Con 10.000 obras/alias la búsqueda midió 15,4/15,4/26,5 ms (mínimo/mediana/máximo) en amd64 y 16,6/16,8/27,6 ms en arm64, con 24 fichas por página.
+
+El navegador de amd64 pasó los flujos de escritorio y móvil, incluida actualización con vista previa de una ficha existente, imagen local, dirección/reparto, filtro por persona combinado con tipo y regreso conservando filtros. Se inspeccionaron las capturas ficticias del nuevo diseño. Usa `tests.preview_server` exclusivamente para el script explícito de navegador: su proveedor sintético no se incluye en la imagen de producción y nunca consulta FilmAffinity. El HTTP de producción, bloqueos de un NAS concreto y la disponibilidad futura del HTML/carátulas no quedan garantizados por estas pruebas.
 
 ## Icono y paleta cinematográfica
 

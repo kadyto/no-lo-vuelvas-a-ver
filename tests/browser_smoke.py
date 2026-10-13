@@ -39,7 +39,7 @@ def main():
                     sys.executable,
                     "-m",
                     "uvicorn",
-                    "app.main:app",
+                    "tests.preview_server:app",
                     "--host",
                     "127.0.0.1",
                     "--port",
@@ -125,6 +125,9 @@ def main():
                         page.locator("#kind").select_option(kind)
                         page.locator("#year").fill("2024")
                         page.locator("#score").select_option(score)
+                        if title in {records[0][0], records[1][0]}:
+                            page.locator("#directors").fill("Dirección ficticia")
+                            page.locator("#actors").fill("Actor ficticio")
                         page.locator("#aliases").fill(
                             "Synthetic alternate title | en" if title == records[0][0] else ""
                         )
@@ -135,6 +138,25 @@ def main():
                             page.locator("input[name=recommended]").check()
                         page.get_by_role("button", name="Guardar en mi biblioteca", exact=True).click()
                         assert page.get_by_text("Ficha guardada.", exact=True).is_visible()
+                    page.goto(base)
+                    page.get_by_role("heading", name=records[0][0], exact=True).click()
+                    page.get_by_role("link", name="Editar ficha", exact=True).click()
+                    page.locator("#fa-url").fill("https://www.filmaffinity.com/es/film900001.html")
+                    page.get_by_role("button", name="Obtener carátula y equipo", exact=True).click()
+                    assert page.locator(".poster-preview img").evaluate(
+                        "image => image.complete && image.naturalWidth > 0"
+                    )
+                    assert page.locator("#score").input_value() == "8.5"
+                    page.get_by_role("button", name="Guardar cambios", exact=True).click()
+                    page.screenshot(path=str(artifacts / "ficha-caratula-equipo.png"), full_page=True)
+                    page.get_by_role("link", name="Dirección ficticia", exact=True).click()
+                    assert page.locator(".work-card").count() == 2
+                    page.get_by_role("link", name="Series", exact=True).click()
+                    assert page.locator(".work-card").count() == 1
+                    assert "person=" in page.url and "kind=series" in page.url
+                    page.get_by_role("heading", name=records[1][0], exact=True).click()
+                    page.get_by_role("link", name="Volver a los resultados", exact=False).click()
+                    assert "person=" in page.url and "kind=series" in page.url
                     page.goto(base)
                     page.screenshot(path=str(artifacts / "biblioteca-escritorio.png"), full_page=True)
                     page.locator("#search").fill("ULTIMO proyector")
@@ -164,6 +186,16 @@ def main():
                     mp.get_by_role("button", name="Entrar", exact=True).click()
                     mp.screenshot(path=str(artifacts / "biblioteca-movil.png"), full_page=True)
                     assert mp.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
+                    mp.get_by_role("heading", name="El último proyector", exact=True).click()
+                    assert mp.locator(".detail-poster img").evaluate(
+                        "image => image.complete && image.naturalWidth > 0"
+                    )
+                    assert mp.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
+                    mp.screenshot(path=str(artifacts / "ficha-caratula-movil.png"), full_page=True)
+                    mp.get_by_role("link", name="Actor ficticio", exact=True).click()
+                    assert mp.locator(".work-card").count() == 2
+                    assert mp.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
+                    mp.goto(base)
                     mp.get_by_role("link", name="Añadir obra", exact=False).click()
                     mp.locator("#fa-url").fill("https://m.filmaffinity.com/en/film123456.html?synthetic=1")
                     mp.get_by_role("button", name="Comprobar y obtener metadatos").click()
@@ -191,7 +223,7 @@ def main():
                     assert not errors
                     browser.close()
                     print(
-                        "BROWSER_OK: desktop/mobile login, local icon/favicon, create, search, return state, edit, recommendation, deletion, manual fallback, update notice/offline, no horizontal overflow"
+                        "BROWSER_OK: desktop/mobile login, local icon/favicon, create, search, return state, edit, local poster preview, credits/person filters, recommendation, deletion, manual fallback, update notice/offline, no horizontal overflow"
                     )
             finally:
                 process.terminate()

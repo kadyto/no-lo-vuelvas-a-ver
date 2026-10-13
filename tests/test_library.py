@@ -187,6 +187,7 @@ def test_manual_failure_duplicate_before_fetch(client, application):
 
 
 def test_requests_preview_mobile_host_cache_and_canonical_save(client, application, db):
+    import re
     import httpx
 
     from app.filmaffinity import FilmAffinityAdapter
@@ -212,6 +213,7 @@ def test_requests_preview_mobile_host_cache_and_canonical_save(client, applicati
         "/metadata", data={"csrf": token, "fa_url": "https://www.filmaffinity.com/es/film123.html"}
     )
     assert response.status_code == 200 and len(calls) == 1
+    obtained_at = re.search(r'name="metadata_obtained_at" value="([^"]+)"', response.text)[1]
     response = client.post(
         "/works",
         data={
@@ -220,6 +222,7 @@ def test_requests_preview_mobile_host_cache_and_canonical_save(client, applicati
             "title": "El faro de prueba",
             "kind": "movie",
             "metadata_confirm": "on",
+            "metadata_obtained_at": obtained_at,
             "score": "8.5",
             "notes": "Una opinión sintética",
         },

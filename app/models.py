@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import Boolean, CheckConstraint, Column, ForeignKey, Integer, String, Table, Text
+from sqlalchemy import Boolean, CheckConstraint, Column, ForeignKey, Integer, LargeBinary, String, Table, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 from app.db import now
@@ -36,9 +36,50 @@ class Work(Base):
     metadata_source: Mapped[str | None]
     metadata_fetched_at: Mapped[str | None]
     metadata_snapshot: Mapped[str | None] = mapped_column(Text)
+    poster_id: Mapped[str | None] = mapped_column(ForeignKey("posters.id"), index=True)
+    poster: Mapped["Poster | None"] = relationship(lazy="joined")
+    credits: Mapped[list["Credit"]] = relationship(
+        cascade="all, delete-orphan", lazy="selectin", order_by="Credit.position"
+    )
     aliases: Mapped[list["Alias"]] = relationship(cascade="all, delete-orphan", lazy="selectin")
     review: Mapped["Review"] = relationship(cascade="all, delete-orphan", uselist=False, lazy="joined")
     categories: Mapped[list["Category"]] = relationship(secondary=work_categories, lazy="selectin")
+
+    @property
+    def directors(self):
+        return [c.person for c in self.credits if c.role == "director"]
+
+    @property
+    def actors(self):
+        return [c.person for c in self.credits if c.role == "actor"]
+
+
+class Poster(Base):
+    __tablename__ = "posters"
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    data: Mapped[bytes] = mapped_column(LargeBinary, deferred=True)
+    media_type: Mapped[str] = mapped_column(String(30))
+    source_url: Mapped[str]
+    fetched_at: Mapped[str]
+
+
+class Person(Base):
+    __tablename__ = "people"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(200))
+    name_key: Mapped[str] = mapped_column(String(200), index=True)
+    identity_key: Mapped[str] = mapped_column(String(220), unique=True)
+    fa_id: Mapped[str | None] = mapped_column(String(16), unique=True)
+
+
+class Credit(Base):
+    __tablename__ = "credits"
+    __table_args__ = (CheckConstraint("role IN ('director','actor')"),)
+    work_id: Mapped[int] = mapped_column(ForeignKey("works.id", ondelete="CASCADE"), primary_key=True)
+    person_id: Mapped[int] = mapped_column(ForeignKey("people.id"), primary_key=True, index=True)
+    role: Mapped[str] = mapped_column(String(10), primary_key=True)
+    position: Mapped[int]
+    person: Mapped[Person] = relationship(lazy="joined")
 
 
 class Review(Base):
