@@ -10,6 +10,8 @@ Las comprobaciones aisladas locales pasaron **79 pruebas en 1,55 s** (cuatro pru
 
 La [ejecución completa previa a main](https://github.com/kadyto/no-lo-vuelvas-a-ver/actions/runs/38450941451) del commit `a374b49e2da51ceff62795deabec10bb974574fd` terminó correctamente: **148 pruebas pasan en amd64 (14,37 s) y arm64 (12,86 s)**. Ambos Compose, imágenes normales y de archivo, smoke de acceso/persistencia/backup/UID-GID y revisión del archivo público pasan. Con 10.000 obras/alias la búsqueda midió 15,4/15,4/26,5 ms (mínimo/mediana/máximo) en amd64 y 16,6/16,8/27,6 ms en arm64, con 24 fichas por página.
 
+La [ejecución en main](https://github.com/kadyto/no-lo-vuelvas-a-ver/actions/runs/38452756733), commit `db1d121f5f9b0f1fd08b6a905a0d86822d8b259b`, también terminó correctamente: 148 pruebas en amd64 (10,50 s) y arm64 (11,49 s), Compose, imágenes, persistencia, backup, archivo y flujos de navegador. Las búsquedas de 10.000 obras/alias midieron 8,7/8,8/17,0 ms en amd64 y 16,3/16,3/26,9 ms en arm64.
+
 El navegador de amd64 pasó los flujos de escritorio y móvil, incluida actualización con vista previa de una ficha existente, imagen local, dirección/reparto, filtro por persona combinado con tipo y regreso conservando filtros. Se inspeccionaron las capturas ficticias del nuevo diseño. Usa `tests.preview_server` exclusivamente para el script explícito de navegador: su proveedor sintético no se incluye en la imagen de producción y nunca consulta FilmAffinity. El HTTP de producción, bloqueos de un NAS concreto y la disponibilidad futura del HTML/carátulas no quedan garantizados por estas pruebas.
 
 ## Icono y paleta cinematográfica
