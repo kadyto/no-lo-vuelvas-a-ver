@@ -1,0 +1,29 @@
+name: Dependencias auxiliares
+on:
+  push:
+    branches: [maintenance/credits-deps-20261013]
+permissions:
+  contents: read
+jobs:
+  resolve:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: '0.12.23'
+      - run: uv lock
+      - run: uv export --frozen --no-dev --format requirements-txt --no-header --output-file requirements.lock --quiet
+      - run: python -m pip download --no-deps --only-binary=:all: pillow==12.3.0 --dest wheelhouse
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dependencias-carátulas
+          path: |
+            uv.lock
+            requirements.lock
+            wheelhouse/
