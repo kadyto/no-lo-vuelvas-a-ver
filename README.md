@@ -22,7 +22,7 @@ No se incluye una biblioteca precargada. Las capturas y pruebas usan datos ficti
 
 ![Biblioteca con seis obras ficticias](docs/ejemplo-escritorio.png)
 
-[Ver captura móvil con datos ficticios](docs/ejemplo-movil.png) · [Ver pantalla de acceso](docs/ejemplo-acceso.png)
+[Ver captura móvil con datos ficticios](docs/ejemplo-movil.png) · [Ver pantalla de acceso](docs/ejemplo-acceso.png) · [Ficha con carátula y equipo](docs/ejemplo-ficha.png) · [Ficha en móvil](docs/ejemplo-ficha-movil.png)
 
 ## Instalar en Docker o NAS
 
