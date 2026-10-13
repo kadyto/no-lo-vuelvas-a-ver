@@ -1,14 +1,17 @@
+import base64
+import hashlib
 import json
-import unicodedata
+import time
 from decimal import Decimal
 
-from sqlalchemy import case, exists, func, or_, select
+from sqlalchemy import case, delete, exists, func, or_, select
 from sqlalchemy.exc import IntegrityError
 
 from app.db import now
 from app.filmaffinity import parse_url
-from app.models import Alias, Category, Review, Work, work_categories
+from app.models import Alias, Category, Credit, MetadataCache, Person, Poster, Review, Work, work_categories
 from app.schemas import WorkData
+from app.text import normalize
 
 DEFAULT_CATEGORIES = [
     "Thriller",
@@ -21,14 +24,6 @@ DEFAULT_CATEGORIES = [
     "Documental",
 ]
 PAGE_SIZE = 24
-
-
-def normalize(text):
-    return " ".join(
-        "".join(c for c in unicodedata.normalize("NFKD", text or "") if not unicodedata.combining(c))
-        .casefold()
-        .split()
-    )
 
 
 class DuplicateWork(ValueError):
@@ -58,6 +53,59 @@ def category_count(db, category_id):
     return db.scalar(
         select(func.count()).select_from(work_categories).where(work_categories.c.category_id == category_id)
     )
+
+
+def person(db, data):
+    key = "fa:" + data.fa_id if data.fa_id else "name:" + normalize(data.name)
+    item = db.scalar(select(Person).where(Person.identity_key == key))
+    if item:
+        return item
+    matches = list(db.scalars(select(Person).where(Person.name_key == normalize(data.name)).limit(2)))
+    # Names entered by hand may reuse a single known identity, but never merge known homonyms.
+    if not data.fa_id and len(matches) == 1:
+        return matches[0]
+    if data.fa_id and len(matches) == 1 and matches[0].fa_id is None:
+        item = matches[0]
+        item.fa_id, item.identity_key = data.fa_id, key
+    else:
+        item = Person(name=data.name, name_key=normalize(data.name), identity_key=key, fa_id=data.fa_id)
+        db.add(item)
+    db.flush()
+    return item
+
+
+def store_poster(db, content, media_type, source_url, fetched_at):
+    digest = hashlib.sha256(content).hexdigest()
+    item = db.get(Poster, digest)
+    if not item:
+        item = Poster(
+            id=digest, data=content, media_type=media_type, source_url=source_url, fetched_at=fetched_at
+        )
+        db.add(item)
+        db.flush()
+    return item
+
+
+def poster_data(poster):
+    if poster is None:
+        return None
+    return {
+        "content": base64.b64encode(poster.data).decode("ascii"),
+        "media_type": poster.media_type,
+        "source_url": poster.source_url,
+        "fetched_at": poster.fetched_at,
+    }
+
+
+def prune_posters(db):
+    used = exists(select(Work.id).where(Work.poster_id == Poster.id))
+    cached = exists(
+        select(MetadataCache.fa_id).where(
+            MetadataCache.expires_at > int(time.time()),
+            func.json_extract(MetadataCache.payload, "$.poster_id") == Poster.id,
+        )
+    )
+    db.execute(delete(Poster).where(~used, ~cached).execution_options(synchronize_session=False))
 
 
 def save_work(db, data: WorkData, work=None, commit=True):
@@ -103,6 +151,30 @@ def _save_work(db, data: WorkData, work=None, commit=True):
     review.score_half = int(data.score * 2) if data.score is not None else None
     review.notes, review.recommended = data.notes, data.recommended
     review.watched_on = data.watched_on.isoformat() if data.watched_on else None
+    previous = {(c.role, c.person_id): c for c in work.credits}
+    credits = []
+    for role, people in [("director", data.directors), ("actor", data.actors)]:
+        seen = set()
+        for position, entry in enumerate(people):
+            member = person(db, entry)
+            if member.id in seen:
+                continue
+            seen.add(member.id)
+            credit = previous.get((role, member.id)) or Credit(person=member, role=role)
+            credit.position = position
+            credits.append(credit)
+    work.credits = credits
+    work.poster = (
+        store_poster(
+            db,
+            data.poster.raw,
+            data.poster.media_type,
+            data.poster.source_url,
+            data.poster.fetched_at.isoformat(),
+        )
+        if data.poster
+        else None
+    )
     try:
         if commit:
             db.commit()
@@ -120,7 +192,17 @@ def _save_work(db, data: WorkData, work=None, commit=True):
 def update_metadata(db, work, fields):
     """Explicit metadata patch preserves review and category relationships."""
     current = work_data(work)
-    allowed = {"title", "original_title", "kind", "year", "fa_url", "aliases"}
+    allowed = {
+        "title",
+        "original_title",
+        "kind",
+        "year",
+        "fa_url",
+        "aliases",
+        "directors",
+        "actors",
+        "poster",
+    }
     for key, value in fields.items():
         if key not in allowed:
             raise ValueError("Campo de metadatos desconocido.")
@@ -150,6 +232,9 @@ def work_data(work):
         "metadata_source": work.metadata_source,
         "metadata_fetched_at": work.metadata_fetched_at,
         "metadata_snapshot": json.loads(work.metadata_snapshot) if work.metadata_snapshot else None,
+        "directors": [{"name": p.name, "fa_id": p.fa_id} for p in work.directors],
+        "actors": [{"name": p.name, "fa_id": p.fa_id} for p in work.actors],
+        "poster": poster_data(work.poster),
     }
 
 
@@ -183,6 +268,7 @@ def search(
     unrated=False,
     sort="title",
     page=1,
+    person_id=None,
 ):
     q = q.strip()[:500]
     stmt = select(Work).join(Review)
@@ -212,6 +298,10 @@ def search(
             )
     if kind in {"movie", "series"}:
         stmt = stmt.where(Work.kind == kind)
+    if person_id is not None:
+        stmt = stmt.where(
+            exists(select(Credit.work_id).where(Credit.work_id == Work.id, Credit.person_id == person_id))
+        )
     if category_ids:
         stmt = stmt.where(
             exists(
@@ -262,7 +352,24 @@ def search(
     return {"works": works, "count": count, "page": page, "pages": pages, "matches": matches}
 
 
-def parse_form(form, categories):
+def parse_people(value, known=()):
+    names = [" ".join(line.split()) for line in value.splitlines() if line.strip()]
+    result, offsets = [], {}
+    for name in names:
+        key = normalize(name)
+        matches = [p for p in known if normalize(p["name"]) == key]
+        match = None
+        if len(matches) == 1:
+            match = matches[0]
+        elif len(matches) > 1 and sum(normalize(x) == key for x in names) == len(matches):
+            index = offsets.get(key, 0)
+            match = matches[index]
+            offsets[key] = index + 1
+        result.append({"name": name, "fa_id": match.get("fa_id") if match else None})
+    return result
+
+
+def parse_form(form, categories, known_people=None):
     aliases = []
     for line in form.get("aliases", "").splitlines():
         if line.strip():
@@ -284,4 +391,6 @@ def parse_form(form, categories):
         notes=form.get("notes", ""),
         recommended=form.get("recommended") == "on",
         watched_on=form.get("watched_on") or None,
+        directors=parse_people(form.get("directors", ""), (known_people or {}).get("directors", [])),
+        actors=parse_people(form.get("actors", ""), (known_people or {}).get("actors", [])),
     )

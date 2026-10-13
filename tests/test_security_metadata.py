@@ -101,6 +101,9 @@ def test_parser_synthetic():
         "kind": "movie",
         "genres": ["Drama"],
         "aliases": [],
+        "directors": [],
+        "actors": [],
+        "poster_url": None,
     }
     assert parse_metadata(HTML.replace("Drama</a>", "Serie de TV</a>"))["kind"] == "series"
     with pytest.raises(MetadataUnavailable):
