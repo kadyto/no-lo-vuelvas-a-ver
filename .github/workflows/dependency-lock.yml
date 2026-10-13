@@ -19,7 +19,8 @@ jobs:
           version: '0.12.23'
       - run: uv lock
       - run: uv export --frozen --no-dev --format requirements-txt --no-header --output-file requirements.lock --quiet
-      - run: python -m pip download --no-deps --only-binary=:all: pillow==12.3.0 --dest wheelhouse
+      - run: |
+          python -m pip download --no-deps --only-binary=:all: pillow==12.3.0 --dest wheelhouse
       - uses: actions/upload-artifact@v4
         with:
           name: dependencias-carátulas
