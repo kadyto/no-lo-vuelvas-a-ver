@@ -36,7 +36,7 @@ Para volver a una versión anterior comprueba su esquema esperado. Si no es comp
 
 En Ajustes descarga JSON de formato `no-lo-vuelvas-a-ver`, versión 1. Incluye UUID, identidad FilmAffinity, títulos, alias/idiomas, categorías globales y asociaciones, fechas internas, visionado, nota nullable, anotaciones, Recomendable y procedencia de metadatos. CSV conserva UTF-8, saltos de línea y campos entrecomillados; añade un apóstrofo si un campo puede interpretarse como fórmula.
 
-La importación admite hasta 10 MiB, valida todos los campos y rechaza IDs/UUID duplicados dentro del archivo. La vista previa dura 15 minutos, pertenece a la sesión que la creó y se consume al confirmar. Muestra como máximo 100 filas, pero el recuento y validación incluyen todo el archivo. Al confirmar se vuelve a comprobar la identidad en una transacción de escritura. Opciones: omitir fichas existentes (por defecto) o cancelar toda la importación si hay conflictos. Nunca se sobrescriben datos silenciosamente. Coincidencias solo por título no se fusionan. Un archivo inválido no añade ni categorías ni fichas.
+La importación admite hasta 50 MiB, valida todos los campos y rechaza IDs/UUID duplicados dentro del archivo. La vista previa dura 15 minutos, pertenece a la sesión que la creó y se consume al confirmar. Muestra como máximo 100 filas, pero el recuento y validación incluyen todo el archivo. Al confirmar se vuelve a comprobar la identidad en una transacción de escritura. Opciones: omitir fichas existentes (por defecto) o cancelar toda la importación si hay conflictos. Nunca se sobrescriben datos silenciosamente. Coincidencias solo por título no se fusionan. Un archivo inválido no añade ni categorías ni fichas.
 
 ## Problemas habituales
 
@@ -56,3 +56,5 @@ La importación admite hasta 10 MiB, valida todos los campos y rechaza IDs/UUID 
 | Se agotó el espacio en `/data` | Libera espacio fuera de la base activa y conserva copias verificadas; no borres WAL/SHM con la app en marcha |
 
 Los límites de acceso son globales para una instalación de una cuenta. Reiniciar conserva los contadores y sesiones en SQLite. No hay recuperación pública de contraseña ni correo saliente en V1: conserva tu contraseña y una copia segura; la restauración preserva el hash, no recupera una contraseña olvidada.
+
+Las carátulas locales y las personas se almacenan en la misma SQLite: la herramienta de backup las incluye. JSON v2 conserva también esos datos y se aceptan archivos v1; CSV solo incluye el origen de las imágenes. La migración 0003 crea una copia previa y no modifica las valoraciones. Más detalles en [carátulas y equipo](caratulas-y-equipo.md).

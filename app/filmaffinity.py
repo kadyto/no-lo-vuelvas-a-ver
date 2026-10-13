@@ -76,7 +76,9 @@ def human_check_required(soup):
 
 
 def person_reference(name, href=None):
-    name = " ".join(str(name or "").split())
+    if not isinstance(name, str):
+        return None
+    name = " ".join(name.split())
     if not name or len(name) > 200:
         return None
     external_id = None
@@ -227,7 +229,7 @@ def parse_metadata(html):
     def unique_people(items, limit):
         seen, result = set(), []
         for item in items:
-            key = item["fa_id"] or item["name"].casefold()
+            key = ("fa", item["fa_id"]) if item["fa_id"] else ("name", item["name"].casefold())
             if key not in seen:
                 seen.add(key)
                 result.append(item)

@@ -382,6 +382,8 @@ def test_endpoint_preview_save_edit_person_navigation_and_image_failure(client, 
     db.expire_all()
     assert library.work_data(db.get(Work, work.id)) == before
     cached = db.get(MetadataCache, "123")
+    stale = client.post(f"/works/{work.id}/edit", data=data)
+    assert stale.status_code == 422
     data["metadata_obtained_at"] = cached.fetched_at
     response = client.post(f"/works/{work.id}/edit", data=data)
     db.expire_all()
@@ -392,3 +394,6 @@ def test_endpoint_preview_save_edit_person_navigation_and_image_failure(client, 
     client.post(f"/works/{work.id}/edit", data=data)
     db.expire_all()
     assert db.get(Work, work.id).poster_id is None
+    assert client.get("/posters/not-a-digest").status_code == 404
+    client.post("/logout", data={"csrf": token})
+    assert client.get("/posters/" + old_poster_id, follow_redirects=False).headers["location"] == "/login"

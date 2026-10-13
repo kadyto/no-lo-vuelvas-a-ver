@@ -186,6 +186,16 @@ def main():
                     mp.get_by_role("button", name="Entrar", exact=True).click()
                     mp.screenshot(path=str(artifacts / "biblioteca-movil.png"), full_page=True)
                     assert mp.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
+                    mp.get_by_role("heading", name="El último proyector", exact=True).click()
+                    assert mp.locator(".detail-poster img").evaluate(
+                        "image => image.complete && image.naturalWidth > 0"
+                    )
+                    assert mp.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
+                    mp.screenshot(path=str(artifacts / "ficha-caratula-movil.png"), full_page=True)
+                    mp.get_by_role("link", name="Actor ficticio", exact=True).click()
+                    assert mp.locator(".work-card").count() == 2
+                    assert mp.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
+                    mp.goto(base)
                     mp.get_by_role("link", name="Añadir obra", exact=False).click()
                     mp.locator("#fa-url").fill("https://m.filmaffinity.com/en/film123456.html?synthetic=1")
                     mp.get_by_role("button", name="Comprobar y obtener metadatos").click()

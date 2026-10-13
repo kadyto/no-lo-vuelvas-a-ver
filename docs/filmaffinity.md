@@ -20,7 +20,7 @@ Cada intento empieza por la ficha española del dominio solicitado, sin una peti
 
 El parser intenta leer título español, título original, año, tipo y hasta doce géneros explícitos. Si no identifica el tipo, el usuario lo completa. No traduce títulos, no añade alias inventados y no promete obtener todas las versiones idiomáticas. V1 no extrae alias cuando no hay una fuente inequívoca. Los géneros son sugerencias; solo se asignan categorías elegidas por el usuario. La vista previa debe confirmarse para guardar. Se conserva proveedor, fecha de obtención y una instantánea mínima de metadatos; los campos editados pueden diferir de ella.
 
-No se copian sinopsis, carteles, críticas, reseñas ajenas ni puntuaciones del proveedor. No hay rastreo del catálogo, enlaces relacionados, búsqueda externa por pulsación ni sincronización de fondo. No se evaden captcha ni bloqueos 403/429. La biblioteca sigue funcionando sin Internet.
+La ampliación de carátulas y equipo obtiene también dirección, reparto y la imagen admitida de la ficha, con copia local y vista previa. Consulta [carátulas y equipo](caratulas-y-equipo.md). No se copian sinopsis, críticas, reseñas ajenas ni puntuaciones del proveedor. No hay rastreo del catálogo, enlaces relacionados, búsqueda externa por pulsación ni sincronización de fondo. No se evaden captcha ni bloqueos 403/429. La biblioteca sigue funcionando sin Internet.
 
 ## Diagnóstico de un bloqueo y captcha
 

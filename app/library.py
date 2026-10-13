@@ -391,6 +391,12 @@ def parse_form(form, categories, known_people=None):
         notes=form.get("notes", ""),
         recommended=form.get("recommended") == "on",
         watched_on=form.get("watched_on") or None,
-        directors=parse_people(form.get("directors", ""), (known_people or {}).get("directors", [])),
-        actors=parse_people(form.get("actors", ""), (known_people or {}).get("actors", [])),
+        directors=parse_people(
+            form.get("directors", "\n".join(p["name"] for p in (known_people or {}).get("directors", []))),
+            (known_people or {}).get("directors", []),
+        ),
+        actors=parse_people(
+            form.get("actors", "\n".join(p["name"] for p in (known_people or {}).get("actors", []))),
+            (known_people or {}).get("actors", []),
+        ),
     )

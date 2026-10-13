@@ -2,6 +2,7 @@
 
 ## Sin publicar — preparación de V1 (0.1.0)
 
+- Carátulas locales en SQLite, dirección y reparto editables, enlaces a obras por persona y actualización explícita de fichas existentes con vista previa. Migración 0003 sin pérdida de valoraciones; JSON v2 completo, importación compatible con v1 y límite de 50 MiB.
 - Identidad visual con icono original de ojo/bobina/cinta de cine, favicon local y paleta azul con acentos amarillos; acceso simplificado sin «Hay historias que se quedan».
 - Inicio más compacto, sin el bloque introductorio; enlace al proyecto, versión instalada y aviso de nuevas releases o cambios en main. Comprobación opcional, asíncrona y cacheada, sin datos de la biblioteca ni instalación automática.
 - El adaptador FilmAffinity usa ahora Requests Session, como changedetection.io, con sus cabeceras predeterminadas y cookies efímeras; conserva el dominio móvil de la consulta, la identidad canónica y la verificación TLS. Diagnóstico de retos sin atribuirlos a la falta de JavaScript y sin falsos positivos por títulos que contengan «captcha».
